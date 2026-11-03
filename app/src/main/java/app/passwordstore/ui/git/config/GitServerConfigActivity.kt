@@ -19,8 +19,6 @@ import app.passwordstore.R
 import app.passwordstore.data.crypto.ExternalSshApiBackend
 import app.passwordstore.data.crypto.ExternalSshKey
 import app.passwordstore.data.crypto.OpenPgpApiBackend
-import app.passwordstore.util.git.sshj.parseSshPublicKey
-import app.passwordstore.util.git.sshj.toSshPublicKey
 import app.passwordstore.data.repo.PasswordRepository
 import app.passwordstore.databinding.ActivityGitCloneBinding
 import app.passwordstore.ui.dialogs.BasicBottomSheet
@@ -28,6 +26,8 @@ import app.passwordstore.ui.git.base.BaseGitActivity
 import app.passwordstore.util.extensions.enableEdgeToEdgeView
 import app.passwordstore.util.extensions.snackbar
 import app.passwordstore.util.extensions.viewBinding
+import app.passwordstore.util.git.sshj.parseSshPublicKey
+import app.passwordstore.util.git.sshj.toSshPublicKey
 import app.passwordstore.util.settings.AuthMode
 import app.passwordstore.util.settings.GitSettings
 import app.passwordstore.util.settings.Protocol
@@ -50,9 +50,10 @@ class GitServerConfigActivity : BaseGitActivity() {
 
   private val binding by viewBinding(ActivityGitCloneBinding::inflate)
 
-  private val sshProviderBackend by lazy(LazyThreadSafetyMode.NONE) {
-    ExternalSshApiBackend(applicationContext)
-  }
+  private val sshProviderBackend by
+    lazy(LazyThreadSafetyMode.NONE) {
+      ExternalSshApiBackend(applicationContext)
+    }
 
   private lateinit var oldAuthMode: AuthMode
   private lateinit var newAuthMode: AuthMode
@@ -234,28 +235,45 @@ class GitServerConfigActivity : BaseGitActivity() {
     MaterialAlertDialogBuilder(this)
       .setTitle(R.string.external_ssh_select_provider)
       .setItems(providers.map { it.label + " (" + it.packageName + ")" }.toTypedArray()) {
-        _, selected ->
+        _,
+        selected ->
         val provider = providers[selected]
         binding.selectExternalSshKey.isEnabled = false
         lifecycleScope.launch {
           try {
-            when (val key = sshProviderBackend.selectKey(
-              provider.packageName, externalSshInteractionHandler
-            )) {
+            when (
+              val key =
+                sshProviderBackend.selectKey(
+                  provider.packageName,
+                  externalSshInteractionHandler,
+                )
+            ) {
               is OpenPgpApiBackend.OperationResult.Success -> {
-                when (val publicKey = sshProviderBackend.publicKey(
-                  provider.packageName, key.value.keyId, externalSshInteractionHandler
-                )) {
+                when (
+                  val publicKey =
+                    sshProviderBackend.publicKey(
+                      provider.packageName,
+                      key.value.keyId,
+                      externalSshInteractionHandler,
+                    )
+                ) {
                   is OpenPgpApiBackend.OperationResult.Success -> {
-                    val normalized = kotlin.runCatching {
-                      val parsed = parseSshPublicKey(publicKey.value)
-                        ?: error("Invalid SSH public key returned by provider")
-                      val normalized = toSshPublicKey(parsed)
-                      require(publicKey.value.trim().substringBefore(' ') == normalized.substringBefore(' ')) {
-                        "SSH public key algorithm does not match the key"
-                      }
-                      normalized
-                    }.getOrElse { throw it }
+                    val normalized =
+                      kotlin
+                        .runCatching {
+                          val parsed =
+                            parseSshPublicKey(publicKey.value)
+                              ?: error("Invalid SSH public key returned by provider")
+                          val normalized = toSshPublicKey(parsed)
+                          require(
+                            publicKey.value.trim().substringBefore(' ') ==
+                              normalized.substringBefore(' ')
+                          ) {
+                            "SSH public key algorithm does not match the key"
+                          }
+                          normalized
+                        }
+                        .getOrElse { throw it }
                     gitSettings.saveExternalSshKey(
                       ExternalSshKey(provider.packageName, key.value.keyId, normalized)
                     )

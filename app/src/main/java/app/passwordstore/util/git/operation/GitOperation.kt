@@ -216,8 +216,11 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
         }
       AuthMode.ExternalSsh -> {
         val activity = callingActivity as BaseGitActivity
-        val key = activity.gitSettings.externalSshKey
-          ?: return Err(IllegalStateException("Select an external SSH authentication key in Git settings"))
+        val key =
+          activity.gitSettings.externalSshKey
+            ?: return Err(
+              IllegalStateException("Select an external SSH authentication key in Git settings")
+            )
         registerAuthProviders(
           SshAuthMethod.ExternalSsh(authActivity, key, activity.externalSshInteractionHandler)
         )

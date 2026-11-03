@@ -12,29 +12,42 @@ class ExternalSshSignatureTest {
   private fun blob(name: String, bytes: ByteArray = byteArrayOf(1, 2)): ByteArray {
     val algorithm = name.toByteArray(Charsets.US_ASCII)
     return ByteBuffer.allocate(4 + algorithm.size + 4 + bytes.size)
-      .putInt(algorithm.size).put(algorithm).putInt(bytes.size).put(bytes).array()
+      .putInt(algorithm.size)
+      .put(algorithm)
+      .putInt(bytes.size)
+      .put(bytes)
+      .array()
   }
 
-  @Test fun acceptsEd25519AndRsaSha2() {
+  @Test
+  fun acceptsEd25519AndRsaSha2() {
     validateExternalSshSignature(blob("ssh-ed25519"), "ssh-ed25519")
     validateExternalSshSignature(blob("rsa-sha2-512"), "rsa-sha2-512")
   }
-  @Test fun rejectsAlgorithmSubstitution() {
+
+  @Test
+  fun rejectsAlgorithmSubstitution() {
     assertFailsWith<IllegalArgumentException> {
       validateExternalSshSignature(blob("ssh-rsa"), "rsa-sha2-256")
     }
   }
-  @Test fun rejectsTruncation() {
+
+  @Test
+  fun rejectsTruncation() {
     assertFailsWith<IllegalArgumentException> {
       validateExternalSshSignature(blob("ssh-ed25519").dropLast(1).toByteArray(), "ssh-ed25519")
     }
   }
-  @Test fun rejectsTrailingBytes() {
+
+  @Test
+  fun rejectsTrailingBytes() {
     assertFailsWith<IllegalArgumentException> {
       validateExternalSshSignature(blob("ssh-ed25519") + byteArrayOf(42), "ssh-ed25519")
     }
   }
-  @Test fun rejectsEmptySignature() {
+
+  @Test
+  fun rejectsEmptySignature() {
     assertFailsWith<IllegalArgumentException> {
       validateExternalSshSignature(blob("ssh-ed25519", byteArrayOf()), "ssh-ed25519")
     }

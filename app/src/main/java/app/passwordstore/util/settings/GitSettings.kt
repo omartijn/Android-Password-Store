@@ -63,17 +63,22 @@ constructor(
   /** External SSH credentials do not replace or delete the user's existing local SSH key. */
   val externalSshKey: ExternalSshKey?
     get() {
-      val provider = settings.getString(PreferenceKeys.SSH_PROVIDER_PACKAGE, null)
-        ?.takeIf { it.isNotBlank() } ?: return null
-      val keyId = settings.getString(PreferenceKeys.SSH_PROVIDER_KEY_ID, null)
-        ?.takeIf { it.isNotBlank() } ?: return null
-      val key = settings.getString(PreferenceKeys.SSH_PROVIDER_PUBLIC_KEY, null)
-        ?.takeIf { it.isNotBlank() } ?: return null
+      val provider =
+        settings.getString(PreferenceKeys.SSH_PROVIDER_PACKAGE, null)?.takeIf { it.isNotBlank() }
+          ?: return null
+      val keyId =
+        settings.getString(PreferenceKeys.SSH_PROVIDER_KEY_ID, null)?.takeIf { it.isNotBlank() }
+          ?: return null
+      val key =
+        settings.getString(PreferenceKeys.SSH_PROVIDER_PUBLIC_KEY, null)?.takeIf { it.isNotBlank() }
+          ?: return null
       return ExternalSshKey(provider, keyId, key)
     }
 
   fun saveExternalSshKey(key: ExternalSshKey) {
-    require(key.providerPackage.isNotBlank() && key.keyId.isNotBlank() && key.publicKey.isNotBlank())
+    require(
+      key.providerPackage.isNotBlank() && key.keyId.isNotBlank() && key.publicKey.isNotBlank()
+    )
     settings.edit {
       putString(PreferenceKeys.SSH_PROVIDER_PACKAGE, key.providerPackage)
       putString(PreferenceKeys.SSH_PROVIDER_KEY_ID, key.keyId)

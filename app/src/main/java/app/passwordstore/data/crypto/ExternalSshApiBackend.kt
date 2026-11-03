@@ -44,13 +44,17 @@ internal object ExternalSshProtocol {
   const val INTERACTION_REQUIRED = 2
 
   // Hash values are defined by the provider API; the selected SSH algorithm determines RSA hash.
-  fun hashFor(sshAlgorithm: String): Int? = when (sshAlgorithm) {
-    "ssh-rsa" -> 0
-    "rsa-sha2-256", "ecdsa-sha2-nistp256" -> 2
-    "ecdsa-sha2-nistp384" -> 3
-    "rsa-sha2-512", "ecdsa-sha2-nistp521", "ssh-ed25519" -> 4
-    else -> null
-  }
+  fun hashFor(sshAlgorithm: String): Int? =
+    when (sshAlgorithm) {
+      "ssh-rsa" -> 0
+      "rsa-sha2-256",
+      "ecdsa-sha2-nistp256" -> 2
+      "ecdsa-sha2-nistp384" -> 3
+      "rsa-sha2-512",
+      "ecdsa-sha2-nistp521",
+      "ssh-ed25519" -> 4
+      else -> null
+    }
 }
 
 data class ExternalSshKey(
@@ -66,9 +70,11 @@ data class ExternalSshKey(
  * deliberately does not confuse the SSH signing protocol with the OpenPGP decrypt protocol.
  */
 class ExternalSshApiBackend internal constructor(private val executor: ExternalSshExecutor) {
-  @Inject constructor(@ApplicationContext context: Context) : this(BinderExternalSshExecutor(context))
+  @Inject
+  constructor(@ApplicationContext context: Context) : this(BinderExternalSshExecutor(context))
 
   data class Provider(val packageName: String, val label: String)
+
   data class Selection(val keyId: String, val description: String)
 
   fun providers(): List<Provider> = executor.providers()
@@ -78,9 +84,10 @@ class ExternalSshApiBackend internal constructor(private val executor: ExternalS
     handler: OpenPgpApiBackend.InteractionHandler,
   ): OpenPgpApiBackend.OperationResult<Selection> =
     execute(provider, Intent(ExternalSshProtocol.SELECT_KEY), handler) { response ->
-      val keyId = response.getStringExtra(ExternalSshProtocol.KEY_ID)
-        ?.takeIf { it.isNotBlank() && it.length <= 256 }
-        ?: throw IOException("SSH provider returned no valid key ID")
+      val keyId =
+        response.getStringExtra(ExternalSshProtocol.KEY_ID)?.takeIf {
+          it.isNotBlank() && it.length <= 256
+        } ?: throw IOException("SSH provider returned no valid key ID")
       Selection(keyId, response.getStringExtra(ExternalSshProtocol.DESCRIPTION).orEmpty())
     }
 
@@ -89,10 +96,12 @@ class ExternalSshApiBackend internal constructor(private val executor: ExternalS
     keyId: String,
     handler: OpenPgpApiBackend.InteractionHandler,
   ): OpenPgpApiBackend.OperationResult<String> =
-    execute(provider, Intent(ExternalSshProtocol.GET_SSH_PUBLIC_KEY)
-      .putExtra(ExternalSshProtocol.KEY_ID, keyId), handler) { response ->
-      response.getStringExtra(ExternalSshProtocol.PUBLIC_KEY)
-        ?.takeIf { it.length in 1..8192 }
+    execute(
+      provider,
+      Intent(ExternalSshProtocol.GET_SSH_PUBLIC_KEY).putExtra(ExternalSshProtocol.KEY_ID, keyId),
+      handler,
+    ) { response ->
+      response.getStringExtra(ExternalSshProtocol.PUBLIC_KEY)?.takeIf { it.length in 1..8192 }
         ?: throw IOException("SSH provider returned no valid public key")
     }
 
@@ -103,17 +112,22 @@ class ExternalSshApiBackend internal constructor(private val executor: ExternalS
     sshAlgorithm: String,
     handler: OpenPgpApiBackend.InteractionHandler,
   ): OpenPgpApiBackend.OperationResult<ByteArray> {
-    val hash = ExternalSshProtocol.hashFor(sshAlgorithm)
-      ?: return OpenPgpApiBackend.OperationResult.Failure(
-        IOException("Unsupported external SSH signature algorithm: " + sshAlgorithm)
-      )
-    return execute(provider, Intent(ExternalSshProtocol.SIGN)
-      .putExtra(ExternalSshProtocol.KEY_ID, keyId)
-      .putExtra(ExternalSshProtocol.CHALLENGE, challenge)
-      .putExtra(ExternalSshProtocol.HASH, hash), handler) { response ->
-      response.getByteArrayExtra(ExternalSshProtocol.SIGNATURE)
-        ?.also { validateExternalSshSignature(it, sshAlgorithm) }
-        ?: throw IOException("SSH provider returned no signature")
+    val hash =
+      ExternalSshProtocol.hashFor(sshAlgorithm)
+        ?: return OpenPgpApiBackend.OperationResult.Failure(
+          IOException("Unsupported external SSH signature algorithm: " + sshAlgorithm)
+        )
+    return execute(
+      provider,
+      Intent(ExternalSshProtocol.SIGN)
+        .putExtra(ExternalSshProtocol.KEY_ID, keyId)
+        .putExtra(ExternalSshProtocol.CHALLENGE, challenge)
+        .putExtra(ExternalSshProtocol.HASH, hash),
+      handler,
+    ) { response ->
+      response.getByteArrayExtra(ExternalSshProtocol.SIGNATURE)?.also {
+        validateExternalSshSignature(it, sshAlgorithm)
+      } ?: throw IOException("SSH provider returned no signature")
     }
   }
 
@@ -129,41 +143,46 @@ class ExternalSshApiBackend internal constructor(private val executor: ExternalS
       )
     var request = initialRequest.putExtra(ExternalSshProtocol.VERSION, 1)
     repeat(MAX_INTERACTION_ROUNDS + 1) { round ->
-      val result = try {
-        executor.execute(provider, request)
-      } catch (error: CancellationException) {
-        throw error
-      } catch (error: Throwable) {
-        return OpenPgpApiBackend.OperationResult.Failure(error)
-      }
+      val result =
+        try {
+          executor.execute(provider, request)
+        } catch (error: CancellationException) {
+          throw error
+        } catch (error: Throwable) {
+          return OpenPgpApiBackend.OperationResult.Failure(error)
+        }
       result.setExtrasClassLoader(SshAuthenticationApiError::class.java.classLoader)
       when (result.getIntExtra(ExternalSshProtocol.RESULT, 0)) {
-        ExternalSshProtocol.SUCCESS -> return try {
-          OpenPgpApiBackend.OperationResult.Success(parse(result))
-        } catch (error: Throwable) {
-          OpenPgpApiBackend.OperationResult.Failure(error)
-        }
+        ExternalSshProtocol.SUCCESS ->
+          return try {
+            OpenPgpApiBackend.OperationResult.Success(parse(result))
+          } catch (error: Throwable) {
+            OpenPgpApiBackend.OperationResult.Failure(error)
+          }
         ExternalSshProtocol.INTERACTION_REQUIRED -> {
           if (round == MAX_INTERACTION_ROUNDS)
             return OpenPgpApiBackend.OperationResult.Failure(
               IOException("SSH provider exceeded the user interaction limit")
             )
           @Suppress("DEPRECATION")
-          val prompt = result.getParcelableExtra<PendingIntent>(ExternalSshProtocol.PENDING_INTENT)
-            ?: return OpenPgpApiBackend.OperationResult.Failure(
-              IOException("SSH provider requested interaction without a PendingIntent")
-            )
-          val interaction = try {
-            withTimeoutOrNull(USER_INTERACTION_TIMEOUT_MS) {
-              withContext(Dispatchers.Main.immediate) { handler.interact(prompt) }
-            } ?: return OpenPgpApiBackend.OperationResult.Failure(
-              TimeoutException("Timed out waiting for SSH hardware-token interaction")
-            )
-          } catch (error: CancellationException) {
-            throw error
-          } catch (error: Throwable) {
-            return OpenPgpApiBackend.OperationResult.Failure(error)
-          }
+          val prompt =
+            result.getParcelableExtra<PendingIntent>(ExternalSshProtocol.PENDING_INTENT)
+              ?: return OpenPgpApiBackend.OperationResult.Failure(
+                IOException("SSH provider requested interaction without a PendingIntent")
+              )
+          val interaction =
+            try {
+              withTimeoutOrNull(USER_INTERACTION_TIMEOUT_MS) {
+                withContext(Dispatchers.Main.immediate) { handler.interact(prompt) }
+              }
+                ?: return OpenPgpApiBackend.OperationResult.Failure(
+                  TimeoutException("Timed out waiting for SSH hardware-token interaction")
+                )
+            } catch (error: CancellationException) {
+              throw error
+            } catch (error: Throwable) {
+              return OpenPgpApiBackend.OperationResult.Failure(error)
+            }
           when (interaction) {
             is OpenPgpApiBackend.InteractionResult.Completed -> {
               // The provider returns the request augmented with key selection or PIN/NFC state.
@@ -176,13 +195,14 @@ class ExternalSshApiBackend internal constructor(private val executor: ExternalS
         }
         else -> {
           @Suppress("DEPRECATION")
-          val error = result.getParcelableExtra<SshAuthenticationApiError>(
-            ExternalSshProtocol.ERROR
+          val error =
+            result.getParcelableExtra<SshAuthenticationApiError>(ExternalSshProtocol.ERROR)
+          return OpenPgpApiBackend.OperationResult.Failure(
+            IOException(
+              error?.message?.takeIf { it.isNotBlank() }
+                ?: "SSH provider failed (error " + (error?.error?.toString() ?: "unknown") + ")"
+            )
           )
-          return OpenPgpApiBackend.OperationResult.Failure(IOException(
-            error?.message?.takeIf { it.isNotBlank() }
-              ?: "SSH provider failed (error " + (error?.error?.toString() ?: "unknown") + ")"
-          ))
         }
       }
     }
@@ -197,45 +217,52 @@ class ExternalSshApiBackend internal constructor(private val executor: ExternalS
 
 internal interface ExternalSshExecutor {
   fun providers(): List<ExternalSshApiBackend.Provider>
+
   suspend fun execute(provider: String, request: Intent): Intent
 }
 
 internal class BinderExternalSshExecutor(private val context: Context) : ExternalSshExecutor {
   @Suppress("DEPRECATION")
   override fun providers(): List<ExternalSshApiBackend.Provider> =
-    context.packageManager.queryIntentServices(Intent(ExternalSshProtocol.SERVICE), 0)
-      .mapNotNull(::providerInfo).distinctBy { it.packageName }
+    context.packageManager
+      .queryIntentServices(Intent(ExternalSshProtocol.SERVICE), 0)
+      .mapNotNull(::providerInfo)
+      .distinctBy { it.packageName }
 
   private fun providerInfo(info: ResolveInfo): ExternalSshApiBackend.Provider? {
     val service = info.serviceInfo ?: return null
     return ExternalSshApiBackend.Provider(
-      service.packageName, info.loadLabel(context.packageManager).toString()
+      service.packageName,
+      info.loadLabel(context.packageManager).toString(),
     )
   }
 
   override suspend fun execute(provider: String, request: Intent): Intent =
     withContext(Dispatchers.IO) {
       val pending = CompletableDeferred<ISshAuthenticationService>()
-      val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-          pending.complete(ISshAuthenticationService.Stub.asInterface(binder))
+      val connection =
+        object : ServiceConnection {
+          override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            pending.complete(ISshAuthenticationService.Stub.asInterface(binder))
+          }
+
+          override fun onServiceDisconnected(name: ComponentName) {
+            if (!pending.isCompleted)
+              pending.completeExceptionally(IOException("SSH provider disconnected"))
+          }
         }
-        override fun onServiceDisconnected(name: ComponentName) {
-          if (!pending.isCompleted) pending.completeExceptionally(
-            IOException("SSH provider disconnected")
-          )
-        }
-      }
       var bound = false
       try {
-        bound = context.bindService(
-          Intent(ExternalSshProtocol.SERVICE).setPackage(provider),
-          connection,
-          Context.BIND_AUTO_CREATE,
-        )
+        bound =
+          context.bindService(
+            Intent(ExternalSshProtocol.SERVICE).setPackage(provider),
+            connection,
+            Context.BIND_AUTO_CREATE,
+          )
         if (!bound) throw IOException("Could not bind to SSH provider: " + provider)
-        val service = withTimeoutOrNull(15_000L) { pending.await() }
-          ?: throw IOException("Timed out connecting to SSH provider: " + provider)
+        val service =
+          withTimeoutOrNull(15_000L) { pending.await() }
+            ?: throw IOException("Timed out connecting to SSH provider: " + provider)
         service.execute(request)
       } finally {
         if (bound) context.unbindService(connection)

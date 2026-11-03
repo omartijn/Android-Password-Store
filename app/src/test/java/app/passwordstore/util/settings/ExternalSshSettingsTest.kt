@@ -17,32 +17,40 @@ import org.junit.rules.TemporaryFolder
 class ExternalSshSettingsTest {
   @get:Rule val tempFolder = TemporaryFolder()
 
-  @Test fun existingModeRemainsTheDefault() {
+  @Test
+  fun existingModeRemainsTheDefault() {
     val prefs = SPMockBuilder().createSharedPreferences()
-    val settings = GitSettings(prefs, SPMockBuilder().createSharedPreferences(), tempFolder.root.path)
+    val settings =
+      GitSettings(prefs, SPMockBuilder().createSharedPreferences(), tempFolder.root.path)
     assertEquals(AuthMode.SshKey, settings.authMode)
     assertNull(settings.externalSshKey)
   }
 
-  @Test fun externalSelectionDoesNotOverwriteLocalKeys() {
+  @Test
+  fun externalSelectionDoesNotOverwriteLocalKeys() {
     val prefs = SPMockBuilder().createSharedPreferences()
     prefs.edit {
       putString(PreferenceKeys.GIT_REMOTE_KEY_TYPE, "imported")
       putLong(PreferenceKeys.SSH_PGP_KEY_ID, 123L)
     }
-    val settings = GitSettings(prefs, SPMockBuilder().createSharedPreferences(), tempFolder.root.path)
+    val settings =
+      GitSettings(prefs, SPMockBuilder().createSharedPreferences(), tempFolder.root.path)
     val key = ExternalSshKey("org.openkeychain", "77", "ssh-ed25519 AAAA")
     settings.saveExternalSshKey(key)
     assertEquals(key, settings.externalSshKey)
     assertIs<GitSettings.UpdateConnectionSettingsResult.Valid>(
       settings.updateConnectionSettingsIfValid(
-        AuthMode.SshKey, AuthMode.ExternalSsh, "ssh://git@example.com/repo.git"
+        AuthMode.SshKey,
+        AuthMode.ExternalSsh,
+        "ssh://git@example.com/repo.git",
       )
     )
     assertEquals(AuthMode.ExternalSsh, settings.authMode)
     assertIs<GitSettings.UpdateConnectionSettingsResult.Valid>(
       settings.updateConnectionSettingsIfValid(
-        AuthMode.ExternalSsh, AuthMode.SshKey, "ssh://git@example.com/repo.git"
+        AuthMode.ExternalSsh,
+        AuthMode.SshKey,
+        "ssh://git@example.com/repo.git",
       )
     )
     assertEquals(key, settings.externalSshKey)
@@ -50,15 +58,19 @@ class ExternalSshSettingsTest {
     assertEquals(123L, prefs.getLong(PreferenceKeys.SSH_PGP_KEY_ID, 0L))
   }
 
-  @Test fun externalSshIsRejectedForHttps() {
-    val settings = GitSettings(
-      SPMockBuilder().createSharedPreferences(),
-      SPMockBuilder().createSharedPreferences(),
-      tempFolder.root.path,
-    )
+  @Test
+  fun externalSshIsRejectedForHttps() {
+    val settings =
+      GitSettings(
+        SPMockBuilder().createSharedPreferences(),
+        SPMockBuilder().createSharedPreferences(),
+        tempFolder.root.path,
+      )
     assertIs<GitSettings.UpdateConnectionSettingsResult.AuthModeMismatch>(
       settings.updateConnectionSettingsIfValid(
-        AuthMode.SshKey, AuthMode.ExternalSsh, "https://example.com/repo.git"
+        AuthMode.SshKey,
+        AuthMode.ExternalSsh,
+        "https://example.com/repo.git",
       )
     )
     assertEquals(AuthMode.SshKey, settings.authMode)
