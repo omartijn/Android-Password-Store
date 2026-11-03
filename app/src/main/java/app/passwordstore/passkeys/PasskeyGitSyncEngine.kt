@@ -414,6 +414,11 @@ private class HeadlessSshSession(
           }
         }
         AuthMode.SshKey -> authenticateWithSshKey(user)
+        AuthMode.ExternalSsh ->
+          throw PasskeySyncException(
+            "External SSH provider requires foreground interaction; use manual Git sync",
+            retryable = false,
+          )
         AuthMode.None ->
           throw PasskeySyncException(
             "Headless SSH requires a configured authentication mode",
