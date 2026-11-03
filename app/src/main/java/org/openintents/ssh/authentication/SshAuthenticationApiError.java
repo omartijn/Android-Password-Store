@@ -18,6 +18,8 @@ package org.openintents.ssh.authentication;
 
 import android.os.Parcel;
 import android.os.Parcelable;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 public class SshAuthenticationApiError implements Parcelable {
 
@@ -45,12 +47,12 @@ public class SshAuthenticationApiError implements Parcelable {
     private String mMessage;
 
 
-    public SshAuthenticationApiError(int error, String message) {
+    public SshAuthenticationApiError(int error, @NonNull String message) {
         mError = error;
         mMessage = message;
     }
 
-    protected SshAuthenticationApiError(Parcel in) {
+    protected SshAuthenticationApiError(@NonNull Parcel in) {
         mError = in.readInt();
         mMessage = in.readString();
     }
@@ -71,6 +73,7 @@ public class SshAuthenticationApiError implements Parcelable {
         return mError;
     }
 
+    @Nullable
     public String getMessage() {
         return mMessage;
     }
@@ -81,7 +84,7 @@ public class SshAuthenticationApiError implements Parcelable {
     }
 
     @Override
-    public void writeToParcel(Parcel dest, int flags) {
+    public void writeToParcel(@NonNull Parcel dest, int flags) {
         dest.writeInt(mError);
         dest.writeString(mMessage);
     }

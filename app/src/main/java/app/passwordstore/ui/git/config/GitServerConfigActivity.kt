@@ -36,6 +36,7 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.runCatching
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import logcat.LogPriority.ERROR
@@ -258,22 +259,16 @@ class GitServerConfigActivity : BaseGitActivity() {
                     )
                 ) {
                   is OpenPgpApiBackend.OperationResult.Success -> {
-                    val normalized =
-                      kotlin
-                        .runCatching {
-                          val parsed =
-                            parseSshPublicKey(publicKey.value)
-                              ?: error("Invalid SSH public key returned by provider")
-                          val normalized = toSshPublicKey(parsed)
-                          require(
-                            publicKey.value.trim().substringBefore(' ') ==
-                              normalized.substringBefore(' ')
-                          ) {
-                            "SSH public key algorithm does not match the key"
-                          }
-                          normalized
-                        }
-                        .getOrElse { throw it }
+                    val parsed =
+                      parseSshPublicKey(publicKey.value)
+                        ?: error("Invalid SSH public key returned by provider")
+                    val normalized = toSshPublicKey(parsed)
+                    require(
+                      publicKey.value.trim().substringBefore(' ') ==
+                        normalized.substringBefore(' ')
+                    ) {
+                      "SSH public key algorithm does not match the key"
+                    }
                     gitSettings.saveExternalSshKey(
                       ExternalSshKey(provider.packageName, key.value.keyId, normalized)
                     )
@@ -292,6 +287,8 @@ class GitServerConfigActivity : BaseGitActivity() {
               is OpenPgpApiBackend.OperationResult.UserInteractionRequired ->
                 showExternalSshError(getString(R.string.openpgp_provider_interaction_failed))
             }
+          } catch (error: CancellationException) {
+            throw error
           } catch (error: Exception) {
             showExternalSshError(error.message ?: getString(R.string.error))
           } finally {
