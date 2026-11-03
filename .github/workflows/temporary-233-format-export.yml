@@ -1,0 +1,27 @@
+name: Temporary formatter export for issue 233
+on:
+  push:
+    branches:
+      - feature/233-external-ssh-provider
+permissions:
+  contents: read
+jobs:
+  export-formatted:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Setup build environment
+        uses: ./.github/reusable-workflows/setup-gradle
+        with:
+          java-version: 21
+      - name: Format with repository Spotless rules
+        run: ./gradlew spotlessApply
+      - name: Export formatted files to logs without write permissions
+        shell: bash
+        run: |
+          while IFS= read -r file; do
+            echo "FORMAT_START:$file"
+            base64 -w 0 "$file"
+            echo
+            echo "FORMAT_END:$file"
+          done < <(git diff --name-only --diff-filter=M -- '*.kt' '*.kts' '*.xml')
