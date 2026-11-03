@@ -78,7 +78,9 @@ constructor(
   fun saveExternalSshKey(key: ExternalSshKey) {
     require(
       key.providerPackage.isNotBlank() && key.keyId.isNotBlank() && key.publicKey.isNotBlank()
-    ) { "External SSH provider, key ID and public key must be nonblank" }
+    ) {
+      "External SSH provider, key ID and public key must be nonblank"
+    }
     settings.edit {
       putString(PreferenceKeys.SSH_PROVIDER_PACKAGE, key.providerPackage)
       putString(PreferenceKeys.SSH_PROVIDER_KEY_ID, key.keyId)

@@ -264,8 +264,7 @@ class GitServerConfigActivity : BaseGitActivity() {
                         ?: error("Invalid SSH public key returned by provider")
                     val normalized = toSshPublicKey(parsed)
                     require(
-                      publicKey.value.trim().substringBefore(' ') ==
-                        normalized.substringBefore(' ')
+                      publicKey.value.trim().substringBefore(' ') == normalized.substringBefore(' ')
                     ) {
                       "SSH public key algorithm does not match the key"
                     }
