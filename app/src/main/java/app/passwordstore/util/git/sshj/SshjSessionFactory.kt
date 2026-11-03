@@ -8,6 +8,9 @@ import android.util.Base64
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.FragmentActivity
 import app.passwordstore.R
+import app.passwordstore.data.crypto.ExternalSshApiBackend
+import app.passwordstore.data.crypto.ExternalSshKey
+import app.passwordstore.data.crypto.OpenPgpApiBackend
 import app.passwordstore.databinding.DialogSelectableMessageBinding
 import app.passwordstore.ui.git.base.BaseGitActivity
 import app.passwordstore.util.coroutines.DispatcherProvider
@@ -50,6 +53,12 @@ sealed class SshAuthMethod(val activity: AppCompatActivity) {
   class Password(activity: AppCompatActivity) : SshAuthMethod(activity)
 
   class SshKey(activity: AppCompatActivity) : SshAuthMethod(activity)
+
+  class ExternalSsh(
+    activity: AppCompatActivity,
+    val key: ExternalSshKey,
+    val handler: OpenPgpApiBackend.InteractionHandler,
+  ) : SshAuthMethod(activity)
 }
 
 class SshjSessionFactory(
@@ -156,6 +165,16 @@ private fun makeTofuHostKeyVerifier(
   }
 }
 
+private fun <T> externalSshResult(result: OpenPgpApiBackend.OperationResult<T>): T =
+  when (result) {
+    is OpenPgpApiBackend.OperationResult.Success -> result.value
+    is OpenPgpApiBackend.OperationResult.Failure -> throw IOException("External SSH provider failed", result.error)
+    OpenPgpApiBackend.OperationResult.Cancelled ->
+      throw net.schmizz.sshj.common.SSHException(net.schmizz.sshj.common.DisconnectReason.AUTH_CANCELLED_BY_USER)
+    is OpenPgpApiBackend.OperationResult.UserInteractionRequired ->
+      throw IOException("External SSH provider requires an interactive activity")
+  }
+
 private class SshjSession(
   uri: URIish,
   private val username: String,
@@ -186,6 +205,29 @@ private class SshjSession(
         val passwordAuth =
           AuthPassword(CredentialFinder(authMethod.activity, AuthMode.Password, dispatcherProvider))
         ssh.auth(username, passwordAuth)
+      }
+      is SshAuthMethod.ExternalSsh -> {
+        val key = authMethod.key
+        val backend = ExternalSshApiBackend(callingActivity.applicationContext)
+        val publicKey = parseSshPublicKey(key.publicKey)
+          ?: throw IOException("Invalid external SSH public key")
+        val currentKey = runBlocking {
+          externalSshResult(backend.publicKey(key.providerPackage, key.keyId, authMethod.handler))
+        }
+        val currentPublicKey = parseSshPublicKey(currentKey)
+          ?: throw IOException("SSH provider returned an invalid public key")
+        if (toSshPublicKey(publicKey) != toSshPublicKey(currentPublicKey)) {
+          throw IOException("External SSH public key changed; reselect the key in Git settings")
+        }
+        ssh.auth(username, ExternalSshAuth(publicKey) { challenge, algorithm ->
+          runBlocking {
+            externalSshResult(
+              backend.sign(
+                key.providerPackage, key.keyId, challenge, algorithm, authMethod.handler
+              )
+            )
+          }
+        })
       }
       is SshAuthMethod.SshKey -> {
         val pubkeyAuth =

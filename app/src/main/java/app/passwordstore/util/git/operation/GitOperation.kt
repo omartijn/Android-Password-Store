@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.FragmentActivity
 import app.passwordstore.R
 import app.passwordstore.data.repo.PasswordRepository
+import app.passwordstore.ui.git.base.BaseGitActivity
 import app.passwordstore.ui.sshkeygen.PgpAuthKeySelectionActivity
 import app.passwordstore.ui.sshkeygen.SshKeyGenActivity
 import app.passwordstore.ui.sshkeygen.SshKeyImportActivity
@@ -137,7 +138,7 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
         (transport as? SshTransport)?.sshSessionFactory = sshSessionFactory
         credentialsProvider?.let { transport.credentialsProvider = it }
       }
-      command.setTimeout(CONNECT_TIMEOUT)
+      command.setTimeout(if (authMethod is SshAuthMethod.ExternalSsh) 180 else CONNECT_TIMEOUT)
     }
   }
 
@@ -213,6 +214,14 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
           // error, allowing users to make the SSH key selection.
           return Err(SSHException(DisconnectReason.AUTH_CANCELLED_BY_USER))
         }
+      AuthMode.ExternalSsh -> {
+        val activity = callingActivity as BaseGitActivity
+        val key = activity.gitSettings.externalSshKey
+          ?: return Err(IllegalStateException("Select an external SSH authentication key in Git settings"))
+        registerAuthProviders(
+          SshAuthMethod.ExternalSsh(authActivity, key, activity.externalSshInteractionHandler)
+        )
+      }
       AuthMode.Password -> {
         val httpsCredentialProvider =
           HttpsCredentialsProvider(

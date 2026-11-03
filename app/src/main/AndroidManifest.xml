@@ -11,6 +11,9 @@
     <intent>
       <action android:name="org.openintents.openpgp.IOpenPgpService2" />
     </intent>
+    <intent>
+      <action android:name="org.openintents.ssh.authentication.ISshAuthenticationService" />
+    </intent>
   </queries>
 
   <uses-permission android:name="android.permission.INTERNET" />

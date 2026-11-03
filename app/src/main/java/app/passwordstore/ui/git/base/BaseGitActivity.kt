@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import app.passwordstore.R
 import app.passwordstore.data.crypto.CryptoRepository
+import app.passwordstore.data.crypto.OpenPgpActivityInteractionHandler
 import app.passwordstore.injection.prefs.GitSecrets
 import app.passwordstore.util.coroutines.DispatcherProvider
 import app.passwordstore.util.git.ErrorMessages
@@ -65,6 +66,10 @@ abstract class BaseGitActivity : AppCompatActivity() {
     registerForActivityResult(RequestPermission()) { _ ->
       localNetworkAccessSetupCompletion?.complete(Unit)
     }
+
+  // Preserve the original launcher registration order for restored Android Activity results.
+  // Activity Result contracts must be registered before STARTED.
+  val externalSshInteractionHandler = OpenPgpActivityInteractionHandler(this)
 
   /** Enum of possible Git operations than can be run through [launchGitOperation]. */
   enum class GitOp {
