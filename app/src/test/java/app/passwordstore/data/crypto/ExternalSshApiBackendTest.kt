@@ -7,6 +7,9 @@ package app.passwordstore.data.crypto
 import android.app.PendingIntent
 import android.content.Intent
 import java.nio.ByteBuffer
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -192,6 +195,32 @@ class ExternalSshApiBackendTest {
       assertIs<OpenPgpApiBackend.OperationResult.Success<String>>(result).value,
     )
     assertEquals(1, calls)
+  }
+
+  @Test
+  fun blockingBinderResponseIsTimedOutAndWorkerIsInterrupted(): Unit = runBlocking {
+    val started = CountDownLatch(1)
+    val finished = CountDownLatch(1)
+    val executor = BoundedExternalSshCalls(timeoutMs = 250L, maxConcurrentCalls = 1)
+
+    val error =
+      kotlin.test.assertFailsWith<IOException> {
+        executor.execute {
+          started.countDown()
+          try {
+            Thread.sleep(10_000)
+          } finally {
+            finished.countDown()
+          }
+          Intent()
+        }
+      }
+
+    assertTrue(error.message.orEmpty().contains("Timed out waiting for SSH provider response"))
+    assertTrue(started.await(1, TimeUnit.SECONDS))
+    // Binder itself may not cooperate with interruption, but the bounded pool ensures
+    // no unbounded worker growth. This simulated blocking call *does* cooperate.
+    assertTrue(finished.await(2, TimeUnit.SECONDS))
   }
 
   @Test
