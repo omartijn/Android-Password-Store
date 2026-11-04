@@ -59,6 +59,41 @@ class ExternalSshSettingsTest {
   }
 
   @Test
+  fun stagedProviderKeyIsNotPersistedUntilValidSave() {
+    val prefs = SPMockBuilder().createSharedPreferences()
+    val settings =
+      GitSettings(prefs, SPMockBuilder().createSharedPreferences(), tempFolder.root.path)
+    val original = ExternalSshKey("original.provider", "first", "ssh-ed25519 original")
+    val replacement = ExternalSshKey("new.provider", "second", "ssh-ed25519 replacement")
+    settings.saveExternalSshKey(original)
+
+    // Cancelling the chooser, leaving the Activity, or invalid URL validation must not
+    // persist the staged key: the only write occurs on a successful Save.
+    assertEquals(original, settings.externalSshKey)
+    assertIs<GitSettings.UpdateConnectionSettingsResult.AuthModeMismatch>(
+      settings.updateConnectionSettingsIfValid(
+        AuthMode.SshKey,
+        AuthMode.ExternalSsh,
+        "https://example.com/repo.git",
+        selectedExternalSshKey = replacement,
+      )
+    )
+    assertEquals(original, settings.externalSshKey)
+    assertEquals(AuthMode.SshKey, settings.authMode)
+
+    assertIs<GitSettings.UpdateConnectionSettingsResult.Valid>(
+      settings.updateConnectionSettingsIfValid(
+        AuthMode.SshKey,
+        AuthMode.ExternalSsh,
+        "ssh://git@example.com/repo.git",
+        selectedExternalSshKey = replacement,
+      )
+    )
+    assertEquals(replacement, settings.externalSshKey)
+    assertEquals(AuthMode.ExternalSsh, settings.authMode)
+  }
+
+  @Test
   fun externalSshIsRejectedForHttps() {
     val settings =
       GitSettings(
