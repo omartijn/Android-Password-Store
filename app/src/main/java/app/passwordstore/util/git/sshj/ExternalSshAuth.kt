@@ -56,6 +56,23 @@ class ExternalSshAuth(
   }
 }
 
+/**
+ * Convert an SSH provider's public key to the format stored in Git settings.
+ *
+ * The provider key chooser runs before an SSH session exists, so it cannot rely on
+ * SshjSession's usual BouncyCastle setup. Android's built-in trimmed BC provider
+ * does not support parsing Ed25519 keys.
+ */
+fun normalizeExternalSshPublicKey(value: String): String {
+  setUpBouncyCastleForSshj()
+  val parsed = parseSshPublicKey(value) ?: throw IOException("Invalid SSH public key returned by provider")
+  val normalized = toSshPublicKey(parsed)
+  require(value.trim().substringBefore(' ') == normalized.substringBefore(' ')) {
+    "SSH public key algorithm does not match the key"
+  }
+  return normalized
+}
+
 /** Reject provider errors, unexpected algorithms and malformed or trailing signature bytes. */
 fun validateExternalSshSignature(signature: ByteArray, expectedAlgorithm: String) {
   require(signature.size in 9..16384) { "Invalid external SSH signature length" }
