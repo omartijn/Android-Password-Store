@@ -313,6 +313,7 @@
   <string name="connection_mode_ssh_key">Public-key</string>
   <string name="connection_mode_external_ssh">Provider</string>
   <string name="external_ssh_select_key">Select external SSH key</string>
+  <string name="external_ssh_selection_interrupted">External SSH key selection was interrupted. Please select the key again.</string>
   <string name="external_ssh_select_provider">External SSH authentication</string>
   <string name="external_ssh_key_selected">External SSH key: %1$s (change)</string>
   <string name="external_ssh_select_key_first">Select an external SSH key before saving this authentication mode.</string>
