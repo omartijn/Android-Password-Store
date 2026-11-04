@@ -183,6 +183,7 @@ constructor(
     oldAuthMode: AuthMode,
     newAuthMode: AuthMode,
     newUrl: String,
+    selectedExternalSshKey: ExternalSshKey? = null,
   ): UpdateConnectionSettingsResult {
     val parsedUrl = runCatching {
       URIish(newUrl)
@@ -212,6 +213,13 @@ constructor(
       newProtocol == Protocol.Ssh && newAuthMode !in validSshAuth -> {
         return UpdateConnectionSettingsResult.AuthModeMismatch(newProtocol, validSshAuth)
       }
+    }
+
+    // A chooser result is only committed after all URL/authentication validation succeeds.
+    // Persist the key before enabling the external mode so an observer cannot see that mode
+    // without its corresponding key.
+    if (newAuthMode == AuthMode.ExternalSsh && selectedExternalSshKey != null) {
+      saveExternalSshKey(selectedExternalSshKey)
     }
 
     if (newAuthMode != oldAuthMode) {
