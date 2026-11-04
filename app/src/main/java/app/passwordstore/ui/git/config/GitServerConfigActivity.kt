@@ -74,15 +74,14 @@ class GitServerConfigActivity : BaseGitActivity() {
     newAuthMode =
       savedInstanceState?.getString(STATE_AUTH_MODE)?.let(AuthMode::fromString)
         ?: gitSettings.authMode
-    stagedExternalSshKey =
-      savedInstanceState?.let { state ->
-        val provider = state.getString(STATE_PROVIDER_PACKAGE)
-        val keyId = state.getString(STATE_PROVIDER_KEY_ID)
-        val publicKey = state.getString(STATE_PROVIDER_PUBLIC_KEY)
-        if (provider != null && keyId != null && publicKey != null)
-          ExternalSshKey(provider, keyId, publicKey)
-        else null
-      }
+    stagedExternalSshKey = savedInstanceState?.let { state ->
+      val provider = state.getString(STATE_PROVIDER_PACKAGE)
+      val keyId = state.getString(STATE_PROVIDER_KEY_ID)
+      val publicKey = state.getString(STATE_PROVIDER_PUBLIC_KEY)
+      if (provider != null && keyId != null && publicKey != null)
+        ExternalSshKey(provider, keyId, publicKey)
+      else null
+    }
 
     binding.authModeGroup.apply {
       when (newAuthMode) {
