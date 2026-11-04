@@ -26,8 +26,7 @@ import app.passwordstore.ui.git.base.BaseGitActivity
 import app.passwordstore.util.extensions.enableEdgeToEdgeView
 import app.passwordstore.util.extensions.snackbar
 import app.passwordstore.util.extensions.viewBinding
-import app.passwordstore.util.git.sshj.parseSshPublicKey
-import app.passwordstore.util.git.sshj.toSshPublicKey
+import app.passwordstore.util.git.sshj.normalizeExternalSshPublicKey
 import app.passwordstore.util.settings.AuthMode
 import app.passwordstore.util.settings.GitSettings
 import app.passwordstore.util.settings.Protocol
@@ -259,15 +258,7 @@ class GitServerConfigActivity : BaseGitActivity() {
                     )
                 ) {
                   is OpenPgpApiBackend.OperationResult.Success -> {
-                    val parsed =
-                      parseSshPublicKey(publicKey.value)
-                        ?: error("Invalid SSH public key returned by provider")
-                    val normalized = toSshPublicKey(parsed)
-                    require(
-                      publicKey.value.trim().substringBefore(' ') == normalized.substringBefore(' ')
-                    ) {
-                      "SSH public key algorithm does not match the key"
-                    }
+                    val normalized = normalizeExternalSshPublicKey(publicKey.value)
                     gitSettings.saveExternalSshKey(
                       ExternalSshKey(provider.packageName, key.value.keyId, normalized)
                     )
