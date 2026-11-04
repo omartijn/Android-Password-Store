@@ -42,6 +42,26 @@ class ExternalSshPublicKeyTest {
   }
 
   @Test
+  fun reconnectAcceptsTheSameProviderKey() {
+    normalizeExternalSshPublicKey(ed25519Key)
+    val keyWithComment = "$ed25519Key user@token"
+    assertEquals(
+      toSshPublicKey(requireMatchingExternalSshPublicKey(ed25519Key, keyWithComment)),
+      ed25519Key,
+    )
+  }
+
+  @Test
+  fun changedProviderKeyIsRejectedInsteadOfSilentlyAuthenticating() {
+    normalizeExternalSshPublicKey(ed25519Key)
+    val replacementKey =
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEPNwCPSLV+eEH0aBpNFfTXR0Q630hxyEZL1b13kBmXT"
+    assertFailsWith<java.io.IOException> {
+      requireMatchingExternalSshPublicKey(ed25519Key, replacementKey)
+    }
+  }
+
+  @Test
   fun rejectsKeyTypeThatDisagreesWithTheEncodedKey() {
     assertFailsWith<IllegalArgumentException> {
       normalizeExternalSshPublicKey(ed25519Key.replaceFirst("ssh-ed25519", "ssh-rsa"))
