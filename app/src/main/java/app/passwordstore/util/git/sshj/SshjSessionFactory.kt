@@ -165,6 +165,19 @@ private fun makeTofuHostKeyVerifier(
   }
 }
 
+/** Close partially initialized connections if SSH authentication fails or is cancelled. */
+internal inline fun <T> closeOnFailure(block: () -> T, close: () -> Unit): T =
+  try {
+    block()
+  } catch (error: Throwable) {
+    try {
+      close()
+    } catch (closeError: Throwable) {
+      error.addSuppressed(closeError)
+    }
+    throw error
+  }
+
 private fun <T> externalSshResult(result: OpenPgpApiBackend.OperationResult<T>): T =
   when (result) {
     is OpenPgpApiBackend.OperationResult.Success -> result.value
@@ -198,6 +211,10 @@ private class SshjSession(
 
   fun connect(): SshjSession {
     ssh = SSHClient(SshjConfig())
+    return closeOnFailure({ connectAuthenticated() }) { ssh.close() }
+  }
+
+  private fun connectAuthenticated(): SshjSession {
     ssh.addHostKeyVerifier(
       makeTofuHostKeyVerifier(hostKeyFile, dispatcherProvider, callingActivity)
     )
