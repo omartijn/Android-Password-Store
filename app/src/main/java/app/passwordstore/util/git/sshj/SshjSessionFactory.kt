@@ -212,17 +212,10 @@ private class SshjSession(
       is SshAuthMethod.ExternalSsh -> {
         val key = authMethod.key
         val backend = ExternalSshApiBackend(callingActivity.applicationContext)
-        val publicKey =
-          parseSshPublicKey(key.publicKey) ?: throw IOException("Invalid external SSH public key")
         val currentKey = runBlocking {
           externalSshResult(backend.publicKey(key.providerPackage, key.keyId, authMethod.handler))
         }
-        val currentPublicKey =
-          parseSshPublicKey(currentKey)
-            ?: throw IOException("SSH provider returned an invalid public key")
-        if (toSshPublicKey(publicKey) != toSshPublicKey(currentPublicKey)) {
-          throw IOException("External SSH public key changed; reselect the key in Git settings")
-        }
+        val publicKey = requireMatchingExternalSshPublicKey(key.publicKey, currentKey)
         ssh.auth(
           username,
           ExternalSshAuth(publicKey) { challenge, algorithm ->
