@@ -14,13 +14,23 @@ import android.os.IBinder
 import app.passwordstore.util.git.sshj.validateExternalSshSignature
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadFactory
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import org.openintents.ssh.authentication.ISshAuthenticationService
 import org.openintents.ssh.authentication.SshAuthenticationApiError
 
@@ -221,6 +231,56 @@ internal interface ExternalSshExecutor {
   suspend fun execute(provider: String, request: Intent): Intent
 }
 
+/**
+ * Android Binder IPC is synchronous, and cancelling a coroutine cannot interrupt a blocked
+ * transact reliably. Run provider calls on a bounded pool so a stalled provider cannot block the
+ * calling Git operation or exhaust the app's threads. Timed-out calls may remain in Binder until
+ * the remote process returns; never queue unbounded requests behind them.
+ */
+internal class BoundedExternalSshCalls(
+  private val timeoutMs: Long = 30_000L,
+  maxConcurrentCalls: Int = 2,
+) {
+  private val executor =
+    ThreadPoolExecutor(
+      0,
+      maxConcurrentCalls,
+      30L,
+      TimeUnit.SECONDS,
+      SynchronousQueue<Runnable>(),
+      ThreadFactory { runnable ->
+        Thread(runnable, "external-ssh-binder").apply { isDaemon = true }
+      },
+    )
+
+  suspend fun <T> execute(operation: () -> T): T =
+    try {
+      withTimeout(timeoutMs) {
+        suspendCancellableCoroutine { continuation ->
+          val future =
+            try {
+              executor.submit {
+                try {
+                  val result = operation()
+                  if (continuation.isActive) continuation.resume(result)
+                } catch (error: Throwable) {
+                  if (continuation.isActive) continuation.resumeWithException(error)
+                }
+              }
+            } catch (error: RejectedExecutionException) {
+              continuation.resumeWithException(
+                IOException("SSH provider has too many pending requests", error)
+              )
+              return@suspendCancellableCoroutine
+            }
+          continuation.invokeOnCancellation { future.cancel(true) }
+        }
+      }
+    } catch (error: TimeoutCancellationException) {
+      throw IOException("Timed out waiting for SSH provider response", error)
+    }
+}
+
 internal class BinderExternalSshExecutor(private val context: Context) : ExternalSshExecutor {
   @Suppress("DEPRECATION")
   override fun providers(): List<ExternalSshApiBackend.Provider> =
@@ -263,9 +323,13 @@ internal class BinderExternalSshExecutor(private val context: Context) : Externa
         val service =
           withTimeoutOrNull(15_000L) { pending.await() }
             ?: throw IOException("Timed out connecting to SSH provider: " + provider)
-        service.execute(request)
+        providerCalls.execute { service.execute(request) }
       } finally {
         if (bound) context.unbindService(connection)
       }
     }
+
+  private companion object {
+    val providerCalls = BoundedExternalSshCalls()
+  }
 }
