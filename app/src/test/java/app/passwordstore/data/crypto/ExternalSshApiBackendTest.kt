@@ -142,6 +142,59 @@ class ExternalSshApiBackendTest {
   }
 
   @Test
+  fun removedProviderFailsWithoutAttemptingToSign(): Unit = runBlocking {
+    var called = false
+    val api =
+      ExternalSshApiBackend(
+        object : ExternalSshExecutor {
+          override fun providers() = emptyList<ExternalSshApiBackend.Provider>()
+
+          override suspend fun execute(provider: String, request: Intent): Intent {
+            called = true
+            return reply(ExternalSshProtocol.SUCCESS)
+          }
+        }
+      )
+    assertIs<OpenPgpApiBackend.OperationResult.Failure>(
+      api.sign("missing", "key", byteArrayOf(1), "ssh-ed25519", handler(null))
+    )
+    assertTrue(!called)
+  }
+
+  @Test
+  fun providerReinstallAllowsTheNextPublicKeyRequest(): Unit = runBlocking {
+    var installed = false
+    var calls = 0
+    val api =
+      ExternalSshApiBackend(
+        object : ExternalSshExecutor {
+          override fun providers() =
+            if (installed) listOf(ExternalSshApiBackend.Provider("provider", "Test"))
+            else emptyList()
+
+          override suspend fun execute(provider: String, request: Intent): Intent {
+            calls++
+            assertEquals(ExternalSshProtocol.GET_SSH_PUBLIC_KEY, request.action)
+            return reply(ExternalSshProtocol.SUCCESS)
+              .putExtra(ExternalSshProtocol.PUBLIC_KEY, "ssh-ed25519 public-key")
+          }
+        }
+      )
+
+    assertIs<OpenPgpApiBackend.OperationResult.Failure>(
+      api.publicKey("provider", "key", handler(null))
+    )
+    assertEquals(0, calls)
+    installed = true
+    val result = api.publicKey("provider", "key", handler(null))
+    assertEquals(
+      "ssh-ed25519 public-key",
+      assertIs<OpenPgpApiBackend.OperationResult.Success<String>>(result).value,
+    )
+    assertEquals(1, calls)
+  }
+
+  @Test
   fun unsupportedAlgorithmNeverContactsProvider(): Unit = runBlocking {
     var called = false
     val api = fake {
