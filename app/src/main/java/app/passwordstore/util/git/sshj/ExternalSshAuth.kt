@@ -73,6 +73,21 @@ fun normalizeExternalSshPublicKey(value: String): String {
   return normalized
 }
 
+/**
+ * A selected provider key must remain the same across Git operations and reconnects.
+ * Never silently fall back to another key when a token is removed or the provider changes.
+ */
+fun requireMatchingExternalSshPublicKey(configured: String, fromProvider: String): PublicKey {
+  val saved =
+    parseSshPublicKey(configured) ?: throw IOException("Invalid external SSH public key")
+  val current =
+    parseSshPublicKey(fromProvider) ?: throw IOException("SSH provider returned an invalid public key")
+  if (toSshPublicKey(saved) != toSshPublicKey(current)) {
+    throw IOException("External SSH public key changed; reselect the key in Git settings")
+  }
+  return saved
+}
+
 /** Reject provider errors, unexpected algorithms and malformed or trailing signature bytes. */
 fun validateExternalSshSignature(signature: ByteArray, expectedAlgorithm: String) {
   require(signature.size in 9..16384) { "Invalid external SSH signature length" }
