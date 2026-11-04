@@ -43,8 +43,10 @@ class OpenPgpInteractionCoordinator @Inject constructor() {
 }
 
 /** Activity Result API bridge used by password and Credential Provider activities. */
-class OpenPgpActivityInteractionHandler(activity: ComponentActivity) :
-  OpenPgpApiBackend.InteractionHandler {
+class OpenPgpActivityInteractionHandler(
+  activity: ComponentActivity,
+  private val onOrphanedResult: (() -> Unit)? = null,
+) : OpenPgpApiBackend.InteractionHandler {
 
   private val waiting =
     AtomicReference<
@@ -55,7 +57,14 @@ class OpenPgpActivityInteractionHandler(activity: ComponentActivity) :
 
   private val launcher =
     activity.registerForActivityResult(StartIntentSenderForResult()) { result ->
-      val continuation = waiting.getAndSet(null) ?: return@registerForActivityResult
+      val continuation = waiting.getAndSet(null)
+      if (continuation == null) {
+        // Android can deliver a saved ActivityResult after recreating the Activity, but the
+        // original coroutine/continuation belongs to the destroyed instance. Never mistake
+        // that stale result for a successful current operation.
+        onOrphanedResult?.invoke()
+        return@registerForActivityResult
+      }
       if (!continuation.isActive) return@registerForActivityResult
       if (result.resultCode == Activity.RESULT_OK) {
         continuation.resume(OpenPgpApiBackend.InteractionResult.Completed(result.data))
