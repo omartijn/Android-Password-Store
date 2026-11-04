@@ -59,13 +59,14 @@ class ExternalSshAuth(
 /**
  * Convert an SSH provider's public key to the format stored in Git settings.
  *
- * The provider key chooser runs before an SSH session exists, so it cannot rely on
- * SshjSession's usual BouncyCastle setup. Android's built-in trimmed BC provider
- * does not support parsing Ed25519 keys.
+ * The provider key chooser runs before an SSH session exists, so it cannot rely on SshjSession's
+ * usual BouncyCastle setup. Android's built-in trimmed BC provider does not support parsing Ed25519
+ * keys.
  */
 fun normalizeExternalSshPublicKey(value: String): String {
   setUpBouncyCastleForSshj()
-  val parsed = parseSshPublicKey(value) ?: throw IOException("Invalid SSH public key returned by provider")
+  val parsed =
+    parseSshPublicKey(value) ?: throw IOException("Invalid SSH public key returned by provider")
   val normalized = toSshPublicKey(parsed)
   require(value.trim().substringBefore(' ') == normalized.substringBefore(' ')) {
     "SSH public key algorithm does not match the key"
@@ -81,7 +82,8 @@ fun requireMatchingExternalSshPublicKey(configured: String, fromProvider: String
   val saved =
     parseSshPublicKey(configured) ?: throw IOException("Invalid external SSH public key")
   val current =
-    parseSshPublicKey(fromProvider) ?: throw IOException("SSH provider returned an invalid public key")
+    parseSshPublicKey(fromProvider)
+      ?: throw IOException("SSH provider returned an invalid public key")
   if (toSshPublicKey(saved) != toSshPublicKey(current)) {
     throw IOException("External SSH public key changed; reselect the key in Git settings")
   }
