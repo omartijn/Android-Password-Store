@@ -21,6 +21,8 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import javax.inject.Inject
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -29,8 +31,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import org.openintents.ssh.authentication.ISshAuthenticationService
 import org.openintents.ssh.authentication.SshAuthenticationApiError
 
@@ -232,10 +232,10 @@ internal interface ExternalSshExecutor {
 }
 
 /**
- * Android Binder IPC is synchronous, and cancelling a coroutine cannot interrupt a blocked
- * transact reliably. Run provider calls on a bounded pool so a stalled provider cannot block the
- * calling Git operation or exhaust the app's threads. Timed-out calls may remain in Binder until
- * the remote process returns; never queue unbounded requests behind them.
+ * Android Binder IPC is synchronous, and cancelling a coroutine cannot interrupt a blocked transact
+ * reliably. Run provider calls on a bounded pool so a stalled provider cannot block the calling Git
+ * operation or exhaust the app's threads. Timed-out calls may remain in Binder until the remote
+ * process returns; never queue unbounded requests behind them.
  */
 internal class BoundedExternalSshCalls(
   private val timeoutMs: Long = 30_000L,
