@@ -8,6 +8,7 @@ import android.Manifest
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -69,7 +70,10 @@ abstract class BaseGitActivity : AppCompatActivity() {
 
   // Preserve the original launcher registration order for restored Android Activity results.
   // Activity Result contracts must be registered before STARTED.
-  val externalSshInteractionHandler = OpenPgpActivityInteractionHandler(this)
+  val externalSshInteractionHandler =
+    OpenPgpActivityInteractionHandler(this) {
+      Toast.makeText(this, R.string.external_ssh_interaction_interrupted, Toast.LENGTH_LONG).show()
+    }
 
   /** Enum of possible Git operations than can be run through [launchGitOperation]. */
   enum class GitOp {
