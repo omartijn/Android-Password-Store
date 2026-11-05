@@ -14,6 +14,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.ServiceInfo
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -77,12 +78,13 @@ class InteractiveGitForegroundService : Service() {
           .setSilent(true)
           .build()
 
-      ServiceCompat.startForeground(
-        this,
-        NOTIFICATION_ID,
-        notification,
-        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-      )
+      // Typed foreground services are supported from API 29. ServiceCompat uses the
+      // untyped startForeground overload on Android 8/9.
+      val serviceType =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+          ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        else 0
+      ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, serviceType)
       foregroundReady.complete(Unit)
     } catch (error: Exception) {
       foregroundReady.completeExceptionally(error)
