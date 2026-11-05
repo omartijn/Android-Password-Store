@@ -9,7 +9,6 @@ import android.app.Service
 import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import app.passwordstore.R
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
