@@ -110,8 +110,8 @@ class InteractiveGitForegroundService : Service() {
 }
 
 /**
- * A foreground lease is always released, including failure to start partway through the
- * acquisition and coroutine cancellation. The caller controls the actual service operations.
+ * A foreground lease is always released, including failure to start partway through the acquisition
+ * and coroutine cancellation. The caller controls the actual service operations.
  */
 internal suspend fun <T> withForegroundLease(
   start: suspend () -> Unit,
