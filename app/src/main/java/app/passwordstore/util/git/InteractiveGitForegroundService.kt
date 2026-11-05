@@ -110,6 +110,22 @@ class InteractiveGitForegroundService : Service() {
 }
 
 /**
+ * A foreground lease is always released, including failure to start partway through the
+ * acquisition and coroutine cancellation. The caller controls the actual service operations.
+ */
+internal suspend fun <T> withForegroundLease(
+  start: suspend () -> Unit,
+  stop: suspend () -> Unit,
+  operation: suspend () -> T,
+): T =
+  try {
+    start()
+    operation()
+  } finally {
+    withContext(NonCancellable) { stop() }
+  }
+
+/**
  * Start while the Git Activity is visible, and wait until Android has acknowledged foreground
  * service promotion before opening the SSH connection or launching the provider's PIN/NFC UI.
  *
@@ -144,22 +160,26 @@ internal suspend fun <T> withInteractiveGitForeground(
 
     var started = false
     var bound = false
-    try {
-      ContextCompat.startForegroundService(application, serviceIntent)
-      started = true
-      bound = application.bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
-      if (!bound) throw IOException("Unable to bind interactive Git foreground service")
-      try {
-        withTimeout(10_000L) { connected.await().foregroundReady.await() }
-      } catch (error: TimeoutCancellationException) {
-        throw IOException("Timed out starting interactive Git foreground service", error)
-      }
-      operation()
-    } finally {
-      withContext(NonCancellable + Dispatchers.Main.immediate) {
-        if (bound) application.unbindService(connection)
-        if (started) application.stopService(serviceIntent)
-      }
-    }
+    withForegroundLease(
+      start = {
+        ContextCompat.startForegroundService(application, serviceIntent)
+        started = true
+        bound = application.bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
+        if (!bound) throw IOException("Unable to bind interactive Git foreground service")
+        try {
+          withTimeout(10_000L) { connected.await().foregroundReady.await() }
+        } catch (error: TimeoutCancellationException) {
+          throw IOException("Timed out starting interactive Git foreground service", error)
+        }
+      },
+      stop = {
+        try {
+          if (bound) application.unbindService(connection)
+        } finally {
+          if (started) application.stopService(serviceIntent)
+        }
+      },
+      operation = operation,
+    )
   }
 }
