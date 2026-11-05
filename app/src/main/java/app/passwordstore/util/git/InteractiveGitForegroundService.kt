@@ -31,10 +31,10 @@ import kotlinx.coroutines.withTimeout
 /**
  * Foreground execution protection for a user-initiated, interactive Git transfer.
  *
- * External SSH providers open their own Activity for PIN/NFC interaction, taking Password Store
- * out of the foreground. Some Android network policies tear down its TCP sockets at that point.
- * This service owns no Git state: the existing Activity/JGit/SSHJ stack still performs the
- * transfer, and the service is held only until that operation finishes.
+ * External SSH providers open their own Activity for PIN/NFC interaction, taking Password Store out
+ * of the foreground. Some Android network policies tear down its TCP sockets at that point. This
+ * service owns no Git state: the existing Activity/JGit/SSHJ stack still performs the transfer, and
+ * the service is held only until that operation finishes.
  */
 class InteractiveGitForegroundService : Service() {
   internal val foregroundReady = CompletableDeferred<Unit>()
@@ -62,8 +62,7 @@ class InteractiveGitForegroundService : Service() {
         PendingIntent.getActivity(
           this,
           0,
-          Intent(this, LaunchActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+          Intent(this, LaunchActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
           PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
       val notification =
