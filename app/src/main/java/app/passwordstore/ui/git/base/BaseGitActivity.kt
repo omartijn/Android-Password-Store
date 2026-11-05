@@ -20,6 +20,7 @@ import app.passwordstore.injection.prefs.GitSecrets
 import app.passwordstore.util.coroutines.DispatcherProvider
 import app.passwordstore.util.git.ErrorMessages
 import app.passwordstore.util.git.GitOperationCoordinator
+import app.passwordstore.util.git.withInteractiveGitForeground
 import app.passwordstore.util.git.operation.BreakOutOfDetached
 import app.passwordstore.util.git.operation.CloneOperation
 import app.passwordstore.util.git.operation.GcOperation
@@ -28,6 +29,7 @@ import app.passwordstore.util.git.operation.PushOperation
 import app.passwordstore.util.git.operation.ResetToRemoteOperation
 import app.passwordstore.util.git.operation.SyncOperation
 import app.passwordstore.util.git.sshj.fixUri
+import app.passwordstore.util.settings.AuthMode
 import app.passwordstore.util.settings.GitSettings
 import app.passwordstore.util.settings.PreferenceKeys
 import com.github.michaelbull.result.Err
@@ -43,6 +45,7 @@ import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.net.SocketFactory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -177,7 +180,23 @@ abstract class BaseGitActivity : AppCompatActivity() {
    */
   private suspend fun lockedGitOperation(operation: GitOp): Result<Unit, Throwable> =
     GitOperationCoordinator.withLock {
-      launchGitOperationWithPermission(operation)
+      if (gitSettings.authMode == AuthMode.ExternalSsh && operation != GitOp.GC) {
+        // Start while our Activity is still visible, before SSHJ starts its TCP session or
+        // OpenKeychain/PGPony switches to the hardware-token PIN/NFC Activity.
+        try {
+          withInteractiveGitForeground(this@BaseGitActivity) {
+            launchGitOperationWithPermission(operation)
+          }
+        } catch (error: CancellationException) {
+          throw error
+        } catch (error: Exception) {
+          // A denied/failed foreground-service start must abort the operation. Proceeding
+          // without protection would reproduce the lost TCP connection during PIN entry.
+          Err(error)
+        }
+      } else {
+        launchGitOperationWithPermission(operation)
+      }
     }
 
   private suspend fun launchGitOperationWithPermission(operation: GitOp): Result<Unit, Throwable> {
