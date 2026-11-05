@@ -4,51 +4,80 @@
  */
 package app.passwordstore.util.git
 
-import android.app.NotificationManager
-import android.app.Service
-import android.content.ComponentName
-import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
+import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
-import org.junit.runner.RunWith
-import org.robolectric.Robolectric
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 
-@RunWith(RobolectricTestRunner::class)
+/** Test the coroutine lifetime policy without relying on Robolectric's service/resource stubs. */
 class InteractiveGitForegroundServiceTest {
-
   @Test
-  fun serviceBecomesForegroundBeforeGitMayStart(): Unit = runBlocking {
-    val controller = Robolectric.buildService(InteractiveGitForegroundService::class.java).create()
-    val service = controller.get()
-    try {
-      assertEquals(Service.START_NOT_STICKY, service.onStartCommand(null, 0, 1))
-      // Also propagates a foreground-service promotion failure rather than allowing SSH
-      // to connect without protection.
-      service.foregroundReady.await()
-      val notifications = service.getSystemService(NotificationManager::class.java)
-      assertNotNull(
-        notifications.getNotificationChannel(InteractiveGitForegroundService.CHANNEL_ID)
+  fun successfulTransferReleasesForegroundProtection(): Unit = runBlocking {
+    var active = false
+    val result =
+      withForegroundLease(
+        start = { active = true },
+        stop = { active = false },
+        operation = {
+          assertTrue(active)
+          "git completed"
+        },
       )
-    } finally {
-      controller.destroy()
-    }
+
+    assertEquals("git completed", result)
+    assertTrue(!active)
   }
 
   @Test
-  @Suppress("DEPRECATION")
-  fun manifestDeclaresTheRequiredDataSyncForegroundType() {
-    val application = RuntimeEnvironment.getApplication()
-    val info =
-      application.packageManager.getServiceInfo(
-        ComponentName(application, InteractiveGitForegroundService::class.java),
-        PackageManager.GET_META_DATA,
+  fun providerFailureReleasesForegroundProtection(): Unit = runBlocking {
+    var active = false
+    val failure = IOException("Provider signing failed")
+    val thrown =
+      assertFailsWith<IOException> {
+        withForegroundLease(
+          start = { active = true },
+          stop = { active = false },
+          operation = { throw failure },
+        )
+      }
+
+    assertSame(failure, thrown)
+    assertTrue(!active)
+  }
+
+  @Test
+  fun partiallyFailedServiceStartIsAlsoCleanedUp(): Unit = runBlocking {
+    var active = false
+    var ranGit = false
+    assertFailsWith<IOException> {
+      withForegroundLease(
+        start = {
+          active = true
+          throw IOException("Foreground service not allowed")
+        },
+        stop = { active = false },
+        operation = { ranGit = true },
       )
-    assertTrue(info.foregroundServiceType and ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC != 0)
+    }
+
+    assertTrue(!active)
+    assertTrue(!ranGit)
+  }
+
+  @Test
+  fun cancellationStillReleasesForegroundProtection(): Unit = runBlocking {
+    var active = false
+    assertFailsWith<CancellationException> {
+      withForegroundLease(
+        start = { active = true },
+        stop = { active = false },
+        operation = { throw CancellationException("Activity destroyed") },
+      )
+    }
+    assertTrue(!active)
   }
 }
