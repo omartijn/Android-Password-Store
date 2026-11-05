@@ -398,6 +398,9 @@
   <string name="git_local_network_permission_grant">Grant permission</string>
   <string name="git_url_not_set_error">Git URL is not set.</string>
   <string name="git_operation_running">Running git operation…</string>
+  <string name="git_foreground_channel">Git transfers</string>
+  <string name="git_foreground_title">Git sync in progress</string>
+  <string name="git_foreground_description">Keeping the connection active during hardware key authentication</string>
   <string name="git_break_out_of_detached_success">There was a conflict when trying to rebase. Your local %1$s branch was pushed to another branch named %2$s\n.Use this branch to resolve conflict on your computer.</string>
   <string name="git_break_out_of_detached_unneeded">The repository is not rebasing, no need to push to another branch.</string>
 
