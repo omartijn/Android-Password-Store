@@ -145,9 +145,7 @@ internal suspend fun <T> withInteractiveGitForeground(
     var started = false
     var bound = false
     try {
-      if (ContextCompat.startForegroundService(application, serviceIntent) == null) {
-        throw IOException("Unable to start interactive Git foreground service")
-      }
+      ContextCompat.startForegroundService(application, serviceIntent)
       started = true
       bound = application.bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
       if (!bound) throw IOException("Unable to bind interactive Git foreground service")
