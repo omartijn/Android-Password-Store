@@ -38,6 +38,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import logcat.LogPriority.ERROR
 import logcat.asLog
@@ -147,9 +148,15 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
     if (!preExecute()) {
       return Ok(Unit)
     }
-    val operationResult = GitCommandExecutor(callingActivity, this).execute()
-    postExecute()
-    return operationResult
+    return try {
+      GitCommandExecutor(callingActivity, this).execute()
+    } finally {
+      // A hardware provider can be cancelled while an SSH session is already connected.
+      // Always close it, including when coroutine cancellation interrupts authentication.
+      withContext(NonCancellable + hiltEntryPoint.dispatcherProvider().io()) {
+        sshSessionFactory?.close()
+      }
+    }
   }
 
   private fun onMissingSshKeyFile() {
@@ -243,10 +250,6 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
 
   /** Called before execution of the Git operation. Return false to cancel. */
   open fun preExecute() = true
-
-  private suspend fun postExecute() {
-    withContext(hiltEntryPoint.dispatcherProvider().io()) { sshSessionFactory?.close() }
-  }
 
   companion object {
 
