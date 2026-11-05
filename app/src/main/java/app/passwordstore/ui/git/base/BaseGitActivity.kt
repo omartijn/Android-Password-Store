@@ -20,7 +20,6 @@ import app.passwordstore.injection.prefs.GitSecrets
 import app.passwordstore.util.coroutines.DispatcherProvider
 import app.passwordstore.util.git.ErrorMessages
 import app.passwordstore.util.git.GitOperationCoordinator
-import app.passwordstore.util.git.withInteractiveGitForeground
 import app.passwordstore.util.git.operation.BreakOutOfDetached
 import app.passwordstore.util.git.operation.CloneOperation
 import app.passwordstore.util.git.operation.GcOperation
@@ -29,6 +28,7 @@ import app.passwordstore.util.git.operation.PushOperation
 import app.passwordstore.util.git.operation.ResetToRemoteOperation
 import app.passwordstore.util.git.operation.SyncOperation
 import app.passwordstore.util.git.sshj.fixUri
+import app.passwordstore.util.git.withInteractiveGitForeground
 import app.passwordstore.util.settings.AuthMode
 import app.passwordstore.util.settings.GitSettings
 import app.passwordstore.util.settings.PreferenceKeys
