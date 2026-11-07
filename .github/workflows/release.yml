@@ -22,7 +22,7 @@ jobs:
           java-version: '25.0.5+8.0.LTS'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
 
       - name: Decode signing keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
@@ -56,7 +56,7 @@ jobs:
           version: ${{ steps.version.outputs.version }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
