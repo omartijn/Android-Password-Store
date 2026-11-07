@@ -8,12 +8,14 @@ import android.Manifest
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import app.passwordstore.R
 import app.passwordstore.data.crypto.CryptoRepository
+import app.passwordstore.data.crypto.OpenPgpActivityInteractionHandler
 import app.passwordstore.injection.prefs.GitSecrets
 import app.passwordstore.util.coroutines.DispatcherProvider
 import app.passwordstore.util.git.ErrorMessages
@@ -26,6 +28,8 @@ import app.passwordstore.util.git.operation.PushOperation
 import app.passwordstore.util.git.operation.ResetToRemoteOperation
 import app.passwordstore.util.git.operation.SyncOperation
 import app.passwordstore.util.git.sshj.fixUri
+import app.passwordstore.util.git.withInteractiveGitForeground
+import app.passwordstore.util.settings.AuthMode
 import app.passwordstore.util.settings.GitSettings
 import app.passwordstore.util.settings.PreferenceKeys
 import com.github.michaelbull.result.Err
@@ -41,6 +45,7 @@ import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.net.SocketFactory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,6 +69,13 @@ abstract class BaseGitActivity : AppCompatActivity() {
   private val requestLocalNetworkLauncher =
     registerForActivityResult(RequestPermission()) { _ ->
       localNetworkAccessSetupCompletion?.complete(Unit)
+    }
+
+  // Preserve the original launcher registration order for restored Android Activity results.
+  // Activity Result contracts must be registered before STARTED.
+  val externalSshInteractionHandler =
+    OpenPgpActivityInteractionHandler(this) {
+      Toast.makeText(this, R.string.external_ssh_interaction_interrupted, Toast.LENGTH_LONG).show()
     }
 
   /** Enum of possible Git operations than can be run through [launchGitOperation]. */
@@ -168,7 +180,23 @@ abstract class BaseGitActivity : AppCompatActivity() {
    */
   private suspend fun lockedGitOperation(operation: GitOp): Result<Unit, Throwable> =
     GitOperationCoordinator.withLock {
-      launchGitOperationWithPermission(operation)
+      if (gitSettings.authMode == AuthMode.ExternalSsh && operation != GitOp.GC) {
+        // Start while our Activity is still visible, before SSHJ starts its TCP session or
+        // OpenKeychain/PGPony switches to the hardware-token PIN/NFC Activity.
+        try {
+          withInteractiveGitForeground(this@BaseGitActivity) {
+            launchGitOperationWithPermission(operation)
+          }
+        } catch (error: CancellationException) {
+          throw error
+        } catch (error: Exception) {
+          // A denied/failed foreground-service start must abort the operation. Proceeding
+          // without protection would reproduce the lost TCP connection during PIN entry.
+          Err(error)
+        }
+      } else {
+        launchGitOperationWithPermission(operation)
+      }
     }
 
   private suspend fun launchGitOperationWithPermission(operation: GitOp): Result<Unit, Throwable> {

@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.FragmentActivity
 import app.passwordstore.R
 import app.passwordstore.data.repo.PasswordRepository
+import app.passwordstore.ui.git.base.BaseGitActivity
 import app.passwordstore.ui.sshkeygen.PgpAuthKeySelectionActivity
 import app.passwordstore.ui.sshkeygen.SshKeyGenActivity
 import app.passwordstore.ui.sshkeygen.SshKeyImportActivity
@@ -37,6 +38,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import logcat.LogPriority.ERROR
 import logcat.asLog
@@ -137,7 +139,7 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
         (transport as? SshTransport)?.sshSessionFactory = sshSessionFactory
         credentialsProvider?.let { transport.credentialsProvider = it }
       }
-      command.setTimeout(CONNECT_TIMEOUT)
+      command.setTimeout(if (authMethod is SshAuthMethod.ExternalSsh) 180 else CONNECT_TIMEOUT)
     }
   }
 
@@ -146,9 +148,15 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
     if (!preExecute()) {
       return Ok(Unit)
     }
-    val operationResult = GitCommandExecutor(callingActivity, this).execute()
-    postExecute()
-    return operationResult
+    return try {
+      GitCommandExecutor(callingActivity, this).execute()
+    } finally {
+      // A hardware provider can be cancelled while an SSH session is already connected.
+      // Always close it, including when coroutine cancellation interrupts authentication.
+      withContext(NonCancellable + hiltEntryPoint.dispatcherProvider().io()) {
+        sshSessionFactory?.close()
+      }
+    }
   }
 
   private fun onMissingSshKeyFile() {
@@ -213,6 +221,17 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
           // error, allowing users to make the SSH key selection.
           return Err(SSHException(DisconnectReason.AUTH_CANCELLED_BY_USER))
         }
+      AuthMode.ExternalSsh -> {
+        val activity = callingActivity as BaseGitActivity
+        val key =
+          activity.gitSettings.externalSshKey
+            ?: return Err(
+              IllegalStateException("Select an external SSH authentication key in Git settings")
+            )
+        registerAuthProviders(
+          SshAuthMethod.ExternalSsh(authActivity, key, activity.externalSshInteractionHandler)
+        )
+      }
       AuthMode.Password -> {
         val httpsCredentialProvider =
           HttpsCredentialsProvider(
@@ -231,10 +250,6 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
 
   /** Called before execution of the Git operation. Return false to cancel. */
   open fun preExecute() = true
-
-  private suspend fun postExecute() {
-    withContext(hiltEntryPoint.dispatcherProvider().io()) { sshSessionFactory?.close() }
-  }
 
   companion object {
 

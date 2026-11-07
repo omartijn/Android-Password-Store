@@ -11,11 +11,15 @@
     <intent>
       <action android:name="org.openintents.openpgp.IOpenPgpService2" />
     </intent>
+    <intent>
+      <action android:name="org.openintents.ssh.authentication.ISshAuthenticationService" />
+    </intent>
   </queries>
 
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <!-- Required by Autofill to verify the certificate hashes of packages -->
   <uses-permission
     android:name="android.permission.QUERY_ALL_PACKAGES"
@@ -113,6 +117,12 @@
       android:exported="false"
       android:label="@string/new_password_title"
       android:windowSoftInputMode="adjustResize" />
+
+    <!-- Retain network foreground eligibility while a hardware key provider owns the UI. -->
+    <service
+      android:name=".util.git.InteractiveGitForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="dataSync" />
 
     <service
       android:name=".util.services.OreoAutofillService"

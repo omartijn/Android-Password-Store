@@ -6,6 +6,7 @@ package app.passwordstore.util.settings
 
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import app.passwordstore.data.crypto.ExternalSshKey
 import app.passwordstore.data.repo.PasswordRepository
 import app.passwordstore.injection.context.FilesDirPath
 import app.passwordstore.injection.prefs.GitSecrets
@@ -35,6 +36,7 @@ enum class Protocol(val pref: String) {
 
 enum class AuthMode(val pref: String) {
   SshKey("ssh-key"),
+  ExternalSsh("external-ssh"),
   Password("username/password"),
   None("None");
 
@@ -57,6 +59,35 @@ constructor(
 ) {
 
   private val hostKeyPath = "$filesDirPath/.host_key"
+
+  /** External SSH credentials do not replace or delete the user's existing local SSH key. */
+  val externalSshKey: ExternalSshKey?
+    get() {
+      val provider =
+        settings.getString(PreferenceKeys.SSH_PROVIDER_PACKAGE, null)?.takeIf { it.isNotBlank() }
+          ?: return null
+      val keyId =
+        settings.getString(PreferenceKeys.SSH_PROVIDER_KEY_ID, null)?.takeIf { it.isNotBlank() }
+          ?: return null
+      val key =
+        settings.getString(PreferenceKeys.SSH_PROVIDER_PUBLIC_KEY, null)?.takeIf { it.isNotBlank() }
+          ?: return null
+      return ExternalSshKey(provider, keyId, key)
+    }
+
+  fun saveExternalSshKey(key: ExternalSshKey) {
+    require(
+      key.providerPackage.isNotBlank() && key.keyId.isNotBlank() && key.publicKey.isNotBlank()
+    ) {
+      "External SSH provider, key ID and public key must be nonblank"
+    }
+    settings.edit {
+      putString(PreferenceKeys.SSH_PROVIDER_PACKAGE, key.providerPackage)
+      putString(PreferenceKeys.SSH_PROVIDER_KEY_ID, key.keyId)
+      putString(PreferenceKeys.SSH_PROVIDER_PUBLIC_KEY, key.publicKey)
+    }
+  }
+
   var authMode
     get() = AuthMode.fromString(settings.getString(PreferenceKeys.GIT_REMOTE_AUTH))
     private set(value) {
@@ -152,6 +183,7 @@ constructor(
     oldAuthMode: AuthMode,
     newAuthMode: AuthMode,
     newUrl: String,
+    selectedExternalSshKey: ExternalSshKey? = null,
   ): UpdateConnectionSettingsResult {
     val parsedUrl = runCatching {
       URIish(newUrl)
@@ -173,7 +205,7 @@ constructor(
     )
       return UpdateConnectionSettingsResult.MissingUsername(newProtocol)
     val validHttpsAuth = listOf(AuthMode.None, AuthMode.Password)
-    val validSshAuth = listOf(AuthMode.Password, AuthMode.SshKey)
+    val validSshAuth = listOf(AuthMode.Password, AuthMode.SshKey, AuthMode.ExternalSsh)
     when {
       newProtocol == Protocol.Https && newAuthMode !in validHttpsAuth -> {
         return UpdateConnectionSettingsResult.AuthModeMismatch(newProtocol, validHttpsAuth)
@@ -181,6 +213,13 @@ constructor(
       newProtocol == Protocol.Ssh && newAuthMode !in validSshAuth -> {
         return UpdateConnectionSettingsResult.AuthModeMismatch(newProtocol, validSshAuth)
       }
+    }
+
+    // A chooser result is only committed after all URL/authentication validation succeeds.
+    // Persist the key before enabling the external mode so an observer cannot see that mode
+    // without its corresponding key.
+    if (newAuthMode == AuthMode.ExternalSsh && selectedExternalSshKey != null) {
+      saveExternalSshKey(selectedExternalSshKey)
     }
 
     if (newAuthMode != oldAuthMode) {

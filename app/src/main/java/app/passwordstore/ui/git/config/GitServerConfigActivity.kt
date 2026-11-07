@@ -16,6 +16,9 @@ import androidx.core.view.isVisible
 import androidx.core.widget.doOnTextChanged
 import androidx.lifecycle.lifecycleScope
 import app.passwordstore.R
+import app.passwordstore.data.crypto.ExternalSshApiBackend
+import app.passwordstore.data.crypto.ExternalSshKey
+import app.passwordstore.data.crypto.OpenPgpApiBackend
 import app.passwordstore.data.repo.PasswordRepository
 import app.passwordstore.databinding.ActivityGitCloneBinding
 import app.passwordstore.ui.dialogs.BasicBottomSheet
@@ -23,6 +26,7 @@ import app.passwordstore.ui.git.base.BaseGitActivity
 import app.passwordstore.util.extensions.enableEdgeToEdgeView
 import app.passwordstore.util.extensions.snackbar
 import app.passwordstore.util.extensions.viewBinding
+import app.passwordstore.util.git.sshj.normalizeExternalSshPublicKey
 import app.passwordstore.util.settings.AuthMode
 import app.passwordstore.util.settings.GitSettings
 import app.passwordstore.util.settings.Protocol
@@ -31,6 +35,7 @@ import com.github.michaelbull.result.onErr
 import com.github.michaelbull.result.runCatching
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import logcat.LogPriority.ERROR
@@ -45,8 +50,15 @@ class GitServerConfigActivity : BaseGitActivity() {
 
   private val binding by viewBinding(ActivityGitCloneBinding::inflate)
 
+  private val sshProviderBackend by
+    lazy(LazyThreadSafetyMode.NONE) {
+      ExternalSshApiBackend(applicationContext)
+    }
+
   private lateinit var oldAuthMode: AuthMode
   private lateinit var newAuthMode: AuthMode
+  private var stagedExternalSshKey: ExternalSshKey? = null
+  private var selectingExternalSshKey = false
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -59,11 +71,22 @@ class GitServerConfigActivity : BaseGitActivity() {
     supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
     oldAuthMode = gitSettings.authMode
-    newAuthMode = gitSettings.authMode
+    newAuthMode =
+      savedInstanceState?.getString(STATE_AUTH_MODE)?.let(AuthMode::fromString)
+        ?: gitSettings.authMode
+    stagedExternalSshKey = savedInstanceState?.let { state ->
+      val provider = state.getString(STATE_PROVIDER_PACKAGE)
+      val keyId = state.getString(STATE_PROVIDER_KEY_ID)
+      val publicKey = state.getString(STATE_PROVIDER_PUBLIC_KEY)
+      if (provider != null && keyId != null && publicKey != null)
+        ExternalSshKey(provider, keyId, publicKey)
+      else null
+    }
 
     binding.authModeGroup.apply {
-      when (oldAuthMode) {
+      when (newAuthMode) {
         AuthMode.SshKey -> check(binding.authModeSshKey.id)
+        AuthMode.ExternalSsh -> check(binding.authModeExternalSsh.id)
         AuthMode.Password -> check(binding.authModePassword.id)
         AuthMode.None -> clearChecked()
       }
@@ -73,12 +96,17 @@ class GitServerConfigActivity : BaseGitActivity() {
         } else {
           when (checkedButtonId) {
             binding.authModeSshKey.id -> newAuthMode = AuthMode.SshKey
+            binding.authModeExternalSsh.id -> newAuthMode = AuthMode.ExternalSsh
             binding.authModePassword.id -> newAuthMode = AuthMode.Password
             View.NO_ID -> newAuthMode = AuthMode.None
           }
         }
+        updateExternalSshKeyButton()
       }
     }
+
+    binding.selectExternalSshKey.setOnClickListener { selectExternalSshKey() }
+    updateExternalSshKeyButton()
 
     binding.serverUrl.setText(
       gitSettings.url.also {
@@ -126,12 +154,20 @@ class GitServerConfigActivity : BaseGitActivity() {
           .show(supportFragmentManager, "SSH_SCHEME_WARNING")
         return@setOnClickListener
       }
+      if (
+        newAuthMode == AuthMode.ExternalSsh &&
+          (stagedExternalSshKey ?: gitSettings.externalSshKey) == null
+      ) {
+        showExternalSshError(getString(R.string.external_ssh_select_key_first))
+        return@setOnClickListener
+      }
       when (
         val updateResult =
           gitSettings.updateConnectionSettingsIfValid(
             oldAuthMode = oldAuthMode,
             newAuthMode = newAuthMode,
             newUrl = newUrl,
+            selectedExternalSshKey = stagedExternalSshKey,
           )
       ) {
         GitSettings.UpdateConnectionSettingsResult.FailedToParseUrl -> {
@@ -161,6 +197,7 @@ class GitServerConfigActivity : BaseGitActivity() {
           }
         }
         GitSettings.UpdateConnectionSettingsResult.Valid -> {
+          stagedExternalSshKey = null
           if (isClone && PasswordRepository.repository == null) PasswordRepository.initialize()
           if (!isClone) {
             Snackbar.make(
@@ -185,6 +222,35 @@ class GitServerConfigActivity : BaseGitActivity() {
         }
       }
     }
+
+    // The old Activity's coroutine cannot be resumed after recreation. The restored
+    // ActivityResult launcher may receive a stale provider result with no waiting continuation,
+    // so explicitly offer retry instead of silently ignoring an unfinished selection.
+    if (savedInstanceState?.getBoolean(STATE_SELECTING_KEY) == true) {
+      binding.root.post {
+        if (!isFinishing) {
+          showExternalSshError(getString(R.string.external_ssh_selection_interrupted))
+        }
+      }
+    }
+  }
+
+  override fun onSaveInstanceState(outState: Bundle) {
+    outState.putString(STATE_AUTH_MODE, newAuthMode.pref)
+    outState.putBoolean(STATE_SELECTING_KEY, selectingExternalSshKey)
+    stagedExternalSshKey?.let { key ->
+      outState.putString(STATE_PROVIDER_PACKAGE, key.providerPackage)
+      outState.putString(STATE_PROVIDER_KEY_ID, key.keyId)
+      outState.putString(STATE_PROVIDER_PUBLIC_KEY, key.publicKey)
+    }
+    super.onSaveInstanceState(outState)
+  }
+
+  override fun onRestoreInstanceState(savedInstanceState: Bundle) {
+    super.onRestoreInstanceState(savedInstanceState)
+    // Text and button selections are restored by Android after onCreate.
+    setAuthModes(binding.serverUrl.text.toString().startsWith("http"))
+    updateExternalSshKeyButton()
   }
 
   override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -197,20 +263,110 @@ class GitServerConfigActivity : BaseGitActivity() {
     }
   }
 
+  private fun updateExternalSshKeyButton() {
+    binding.selectExternalSshKey.isVisible =
+      newAuthMode == AuthMode.ExternalSsh && !binding.serverUrl.text.toString().startsWith("http")
+    val selected = stagedExternalSshKey ?: gitSettings.externalSshKey
+    binding.selectExternalSshKey.text =
+      selected?.let { getString(R.string.external_ssh_key_selected, it.keyId) }
+        ?: getString(R.string.external_ssh_select_key)
+  }
+
+  private fun selectExternalSshKey() {
+    val providers = sshProviderBackend.providers()
+    if (providers.isEmpty()) {
+      showExternalSshError(getString(R.string.external_ssh_no_provider))
+      return
+    }
+    MaterialAlertDialogBuilder(this)
+      .setTitle(R.string.external_ssh_select_provider)
+      .setItems(providers.map { it.label + " (" + it.packageName + ")" }.toTypedArray()) {
+        _,
+        selected ->
+        val provider = providers[selected]
+        setExternalSshSelectionBusy(true)
+        lifecycleScope.launch {
+          try {
+            when (
+              val key =
+                sshProviderBackend.selectKey(
+                  provider.packageName,
+                  externalSshInteractionHandler,
+                )
+            ) {
+              is OpenPgpApiBackend.OperationResult.Success -> {
+                when (
+                  val publicKey =
+                    sshProviderBackend.publicKey(
+                      provider.packageName,
+                      key.value.keyId,
+                      externalSshInteractionHandler,
+                    )
+                ) {
+                  is OpenPgpApiBackend.OperationResult.Success -> {
+                    val normalized = normalizeExternalSshPublicKey(publicKey.value)
+                    stagedExternalSshKey =
+                      ExternalSshKey(provider.packageName, key.value.keyId, normalized)
+                    updateExternalSshKeyButton()
+                  }
+                  OpenPgpApiBackend.OperationResult.Cancelled -> Unit
+                  is OpenPgpApiBackend.OperationResult.Failure ->
+                    showExternalSshError(publicKey.error.message ?: getString(R.string.error))
+                  is OpenPgpApiBackend.OperationResult.UserInteractionRequired ->
+                    showExternalSshError(getString(R.string.openpgp_provider_interaction_failed))
+                }
+              }
+              OpenPgpApiBackend.OperationResult.Cancelled -> Unit
+              is OpenPgpApiBackend.OperationResult.Failure ->
+                showExternalSshError(key.error.message ?: getString(R.string.error))
+              is OpenPgpApiBackend.OperationResult.UserInteractionRequired ->
+                showExternalSshError(getString(R.string.openpgp_provider_interaction_failed))
+            }
+          } catch (error: CancellationException) {
+            throw error
+          } catch (error: Exception) {
+            showExternalSshError(error.message ?: getString(R.string.error))
+          } finally {
+            setExternalSshSelectionBusy(false)
+          }
+        }
+      }
+      .setNegativeButton(R.string.dialog_cancel, null)
+      .show()
+  }
+
+  private fun setExternalSshSelectionBusy(busy: Boolean) {
+    selectingExternalSshKey = busy
+    binding.selectExternalSshKey.isEnabled = !busy
+    binding.saveButton.isEnabled = !busy
+  }
+
+  private fun showExternalSshError(message: String) {
+    MaterialAlertDialogBuilder(this)
+      .setTitle(R.string.external_ssh_select_provider)
+      .setMessage(message)
+      .setPositiveButton(R.string.dialog_ok, null)
+      .show()
+  }
+
   private fun setAuthModes(isHttps: Boolean) =
     with(binding) {
       if (isHttps) {
         authModeSshKey.isVisible = false
+        authModeExternalSsh.isVisible = false
+        selectExternalSshKey.isVisible = false
         authModePassword.isVisible = true
         showServerResponse.visibility = View.GONE
         gitSettings.showSshServerResponse = true
         if (authModeGroup.checkedButtonId != authModePassword.id) authModeGroup.clearChecked()
       } else {
         authModeSshKey.isVisible = true
+        authModeExternalSsh.isVisible = true
         authModePassword.isVisible = true
         showServerResponse.visibility = View.VISIBLE
         showServerResponse.isChecked = gitSettings.showSshServerResponse
         if (authModeGroup.checkedButtonId == View.NO_ID) authModeGroup.check(authModeSshKey.id)
+        updateExternalSshKeyButton()
       }
     }
 
@@ -287,6 +443,11 @@ class GitServerConfigActivity : BaseGitActivity() {
   }
 
   companion object {
+    private const val STATE_AUTH_MODE = "git_config_auth_mode"
+    private const val STATE_SELECTING_KEY = "git_config_selecting_external_ssh_key"
+    private const val STATE_PROVIDER_PACKAGE = "git_config_external_ssh_provider"
+    private const val STATE_PROVIDER_KEY_ID = "git_config_external_ssh_key_id"
+    private const val STATE_PROVIDER_PUBLIC_KEY = "git_config_external_ssh_public_key"
 
     fun createCloneIntent(context: Context): Intent {
       return Intent(context, GitServerConfigActivity::class.java).apply {
