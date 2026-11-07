@@ -110,4 +110,43 @@ class ExternalSshSettingsTest {
     )
     assertEquals(AuthMode.SshKey, settings.authMode)
   }
+
+  @Test
+  fun externalSshWithoutKeyIsRejected() {
+    val settings =
+      GitSettings(
+        SPMockBuilder().createSharedPreferences(),
+        SPMockBuilder().createSharedPreferences(),
+        tempFolder.root.path,
+      )
+    // No key has been saved and no key is provided: ExternalSsh must be rejected.
+    assertIs<GitSettings.UpdateConnectionSettingsResult.AuthModeMismatch>(
+      settings.updateConnectionSettingsIfValid(
+        AuthMode.SshKey,
+        AuthMode.ExternalSsh,
+        "ssh://git@example.com/repo.git",
+      )
+    )
+    assertEquals(AuthMode.SshKey, settings.authMode)
+    assertNull(settings.externalSshKey)
+  }
+
+  @Test
+  fun externalSshWithPreviouslySavedKeySucceedsWithoutNewKey() {
+    val prefs = SPMockBuilder().createSharedPreferences()
+    val settings =
+      GitSettings(prefs, SPMockBuilder().createSharedPreferences(), tempFolder.root.path)
+    val key = ExternalSshKey("org.openkeychain", "77", "ssh-ed25519 AAAA")
+    settings.saveExternalSshKey(key)
+    // A previously saved key is sufficient; no new key needs to be provided.
+    assertIs<GitSettings.UpdateConnectionSettingsResult.Valid>(
+      settings.updateConnectionSettingsIfValid(
+        AuthMode.SshKey,
+        AuthMode.ExternalSsh,
+        "ssh://git@example.com/repo.git",
+      )
+    )
+    assertEquals(AuthMode.ExternalSsh, settings.authMode)
+    assertEquals(key, settings.externalSshKey)
+  }
 }
