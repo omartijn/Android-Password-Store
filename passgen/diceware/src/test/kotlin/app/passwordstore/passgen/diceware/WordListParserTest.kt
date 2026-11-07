@@ -5,6 +5,7 @@
 
 package app.passwordstore.passgen.diceware
 
+import java.io.File
 import java.io.InputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,8 +31,20 @@ class WordListParserTest {
 
   companion object {
     fun getDefaultWordList(): InputStream {
-      return requireNotNull(this::class.java.classLoader) { "Null classloader????" }
-        .getResourceAsStream("diceware_wordlist.txt")
+      // Try classpath first
+      val classLoader = this::class.java.classLoader
+      val classPathStream = classLoader?.getResourceAsStream("diceware_wordlist.txt")
+      if (classPathStream != null) return classPathStream
+
+      // Fallback: load directly from filesystem (AGP 9.5+ may not include
+      // src/test/resources on the unit test classpath)
+      val file = File("src/test/resources/diceware_wordlist.txt")
+      if (file.exists()) return file.inputStream()
+
+      throw IllegalArgumentException(
+        "Could not find diceware_wordlist.txt on the test classpath or filesystem. " +
+          "Ensure src/test/resources/diceware_wordlist.txt exists."
+      )
     }
   }
 }

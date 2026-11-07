@@ -147,4 +147,26 @@
             column="34"/>
     </issue>
 
+    <issue
+        id="ThreadConstraint"
+        message="Statement must run from @WorkerThread, incompatible with earlier code that must run from @{Main,Ui}Thread"
+        errorLine1="          R.id.menu_pin_password -&gt; {"
+        errorLine2="          ^">
+        <location
+            file="src/main/java/app/passwordstore/ui/passwords/PasswordFragment.kt"
+            line="300"
+            column="11"/>
+    </issue>
+
+    <issue
+        id="ThreadConstraint"
+        message="Branch must run from @WorkerThread, incompatible with the other that must run from @{Main,Ui}Thread"
+        errorLine1="            } else {"
+        errorLine2="                   ^">
+        <location
+            file="src/main/java/app/passwordstore/ui/passwords/PasswordFragment.kt"
+            line="398"
+            column="20"/>
+    </issue>
+
 </issues>
