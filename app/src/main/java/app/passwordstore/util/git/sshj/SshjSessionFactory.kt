@@ -91,6 +91,7 @@ class SshjSessionFactory(
 
   fun close() {
     currentSession?.close()
+    currentSession = null
   }
 }
 

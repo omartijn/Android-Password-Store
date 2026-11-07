@@ -210,6 +210,7 @@ abstract class GitOperation(protected val callingActivity: FragmentActivity) {
                   )
                   .show()
                 callingActivity.finish()
+                return Err(SSHException(DisconnectReason.AUTH_CANCELLED_BY_USER))
               }
             }
           } else {

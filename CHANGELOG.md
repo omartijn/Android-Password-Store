@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-11-07
+
+### Added
+
+- Authenticate Git with external OpenKeychain hardware-backed SSH keys
+- Foreground data-sync service keeps Git operations alive through external SSH provider prompts
+- Recovery messages when external SSH provider interaction is interrupted or cannot resume
+
+### Fixed
+
+- SSH sessions are now closed correctly even when Git coroutines are cancelled
+- External SSH key normalization before creating sessions, fixing trimmed Android BC Ed25519 key-selection failures
+- Full BouncyCastle initialization before external key parsing
+- Provider-key identity validation with reusable validator prevents token key rotation issues
+- Bounded synchronous provider Binder calls with timeout to prevent hangs
+- Failed SSH connections are closed on auth errors and cancellation
+- Staged provider keys are committed only after settings validation
+- Interrupted external-key selection flow can now be recovered
+- Orphaned provider interaction results are surfaced after activity recreation
+- Foreground lease cleanup guaranteed for failures and cancellation
+- dataSync service type guarded for Android 8 and 9 compatibility
+- Interactive SSH in headless passkey sync fails closed instead of hanging
+- Lint nullability, validation and coroutine cancellation rules satisfied for external SSH implementation
+
+### Fork infrastructure
+
+- Comprehensive test coverage for external SSH provider: lease cleanup, key cancellation, provider timeout, authentication failure, key rotation, and reinstallation scenarios
+
 ## [1.27.0] - 2026-10-27
 
 ### Added
@@ -985,7 +1013,8 @@ All notable changes to this project will be documented in this file
 
 - Fix elements overlapping.
 
-[unreleased]: https://github.com/pando85/Android-Password-Store/compare/v1.27.0...HEAD
+[unreleased]: https://github.com/pando85/Android-Password-Store/compare/v1.28.0...HEAD
+[1.28.0]: https://github.com/pando85/Android-Password-Store/compare/v1.27.0...v1.28.0
 [1.27.0]: https://github.com/pando85/Android-Password-Store/compare/v1.26.0...v1.27.0
 [1.26.0]: https://github.com/pando85/Android-Password-Store/compare/v1.25.2...v1.26.0
 [1.25.2]: https://github.com/pando85/Android-Password-Store/compare/v1.25.1...v1.25.2
