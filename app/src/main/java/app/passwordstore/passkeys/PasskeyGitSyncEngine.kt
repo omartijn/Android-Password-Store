@@ -252,6 +252,7 @@ constructor(
     command.setTransportConfigCallback { transport: Transport ->
       when (transport) {
         is SshTransport -> {
+          sshFactory?.close()
           sshFactory =
             HeadlessSshSessionFactory(
               authMode = gitSettings.authMode,
@@ -265,6 +266,7 @@ constructor(
         }
         else -> {
           if (gitSettings.authMode == AuthMode.Password) {
+            credentialsProvider?.close()
             credentialsProvider =
               WipingCredentialsProvider(requireStoredPassword(PreferenceKeys.HTTPS_PASSWORD))
             transport.credentialsProvider = credentialsProvider

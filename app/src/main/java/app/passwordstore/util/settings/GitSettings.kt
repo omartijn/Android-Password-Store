@@ -218,8 +218,17 @@ constructor(
     // A chooser result is only committed after all URL/authentication validation succeeds.
     // Persist the key before enabling the external mode so an observer cannot see that mode
     // without its corresponding key.
-    if (newAuthMode == AuthMode.ExternalSsh && selectedExternalSshKey != null) {
-      saveExternalSshKey(selectedExternalSshKey)
+    if (newAuthMode == AuthMode.ExternalSsh) {
+      if (selectedExternalSshKey != null) {
+        saveExternalSshKey(selectedExternalSshKey)
+      } else if (externalSshKey == null) {
+        // External mode requires a key; reject if neither a new key nor a previously saved key
+        // is available.
+        return UpdateConnectionSettingsResult.AuthModeMismatch(
+          newProtocol,
+          validSshAuth.filter { it != AuthMode.ExternalSsh },
+        )
+      }
     }
 
     if (newAuthMode != oldAuthMode) {
