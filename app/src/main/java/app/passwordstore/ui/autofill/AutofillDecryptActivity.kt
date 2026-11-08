@@ -151,7 +151,8 @@ class AutofillDecryptActivity : BasePGPActivity() {
                   TimeUnit.SECONDS,
                 )
               }
-              entry.clear()
+              // Do not clear the entry here: the dataset's AutofillValues wrap the same CharArrays
+              // and are only parceled after finish(), so clearing would fill NUL characters.
             }
             updateAutofillMatches()
             withContext(dispatcherProvider.main()) { finish() }
